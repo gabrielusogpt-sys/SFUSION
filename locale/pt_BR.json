@@ -1,0 +1,31 @@
+{
+  "main_window": {
+    "window_title": "SFusion Mapper"
+  },
+  "toolbar": {
+    "main": "Barra de Ferramentas Principal",
+    "open_map": "Abrir Mapa",
+    "open_map_tooltip": "Abrir um arquivo de mapa SUMO .net.xml",
+    "add_source": "Adicionar Fonte de Dados",
+    "add_source_tooltip": "Adicionar uma pasta contendo arquivos de dados",
+    "save_map": "Salvar Mapeamento",
+    "save_map_tooltip": "Salvar a configuração de mapeamento em um arquivo .db"
+  },
+  "sources_panel": {
+    "list_title": "Fontes de Dados",
+    "details_title": "Detalhes da Fonte",
+    "type_label": "Tipo:",
+    "type_global": "Global",
+    "type_local": "Local",
+    "associate_button": "Associar ao Mapa",
+    "status_label": "Estado:",
+    "status_not_associated": "Não associado."
+  },
+  "status_bar": {
+    "ready": "Pronto.",
+    "controller_connected": "Pronto (Controlador conectado).",
+    "action_open_map": "Ação: 'Abrir Mapa' acionada (lógica não implementada).",
+    "action_add_source": "Ação: 'Adicionar Fonte' acionada (lógica não implementada).",
+    "action_save_map": "Ação: 'Salvar Mapa' acionado (lógica não implementada)."
+  }
+}

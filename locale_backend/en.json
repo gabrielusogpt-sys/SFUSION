@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "map_importer": {
+      "file_not_found": "Error: Map file not found at path: {path}",
+      "invalid_xml": "Error: Failed to parse map file. The XML is invalid: {error}",
+      "unknown_error": "An unknown error occurred while parsing the map."
+    },
+    "persistence": {
+      "save_failed": "Failed to save mapping database: {error}"
+    }
+  }
+}

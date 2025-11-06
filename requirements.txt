@@ -1,0 +1,12 @@
+# requirements.txt
+#
+# Production Dependencies
+# (What the application needs to run)
+pyside6
+lxml
+pandas
+openpyxl
+
+# Development Dependencies
+# (Tools for testing and development)
+pytest

@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "map_importer": {
+      "file_not_found": "Erro: Arquivo de mapa não encontrado no caminho: {path}",
+      "invalid_xml": "Erro: Falha ao analisar o arquivo de mapa. O XML é inválido: {error}",
+      "unknown_error": "Ocorreu um erro desconhecido ao analisar o mapa."
+    },
+    "persistence": {
+      "save_failed": "Falha ao salvar o banco de dados de mapeamento: {error}"
+    }
+  }
+}
