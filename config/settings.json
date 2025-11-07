@@ -1,5 +1,6 @@
 {
-    "default_language": "pt_BR",
+    "default_language_frontend": "pt_br_frontend.json",
+    "default_language_backend": "pt_br_backend.json",
     "last_map_directory": ".",
     "style": "default"
 }

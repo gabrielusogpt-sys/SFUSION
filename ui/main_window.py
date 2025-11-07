@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,141 +19,114 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Defines the main application window (QMainWindow), which acts as the
-#    "shell" for all other UI components (toolbar, map view, source panel).
+#    Main Window (View). The main "shell" of the application.
+#    It is a "dumb" component that just holds other widgets.
 
-import sys
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QToolBar,
-    QStatusBar,
-    QSplitter,
-    QWidget
+    QMainWindow, 
+    QWidget, 
+    QStatusBar, 
+    QToolBar, 
+    QHBoxLayout,
+    QVBoxLayout # FIX: Import for the map container
 )
 
-# Import the actual components
+# Import sub-widgets
 from ui.map.map_view import MapView
 from ui.sources.sources_panel import SourcesPanel
 
+# --- FIX (Req 3): Import the new InfoPanel ---
+from ui.map.info_panel import InfoPanel
+# --- END FIX ---
+
 class MainWindow(QMainWindow):
     """
-    The main application window (View).
-
-    This class is responsible only for the layout and visual presentation
-    of the main components. It is a "dumb" component (View).
-    It emits signals that the MainController will connect to.
+    Main Window (View)
+    
+    The main "shell" of the application. It holds the toolbar,
+    status bar, and the central widget (which contains the map
+    and the sources panel).
     """
     def __init__(self, parent=None):
         """
-        Main window constructor.
+        Constructor.
         """
         super().__init__(parent)
         
-        # This function will contain all UI setup code
-        self.setup_ui()
+        # --- 1. Create Actions ---
+        # (These will be configured by the controller)
+        self.open_map_action = QAction("Open Map")
+        self.add_source_action = QAction("Add Source")
+        self.save_map_action = QAction("Save Map")
+        
+        # --- 2. Create UI Components ---
+        self.main_toolbar = QToolBar("Main")
+        self.status_bar = QStatusBar()
+        
+        # (Sub-widgets are created in _setup_ui)
+        self.map_view = None
+        self.sources_panel = None
+        
+        # --- FIX (Req 3): Add placeholder for info panel ---
+        self.info_panel = None
+        self.map_container = None
+        # --- END FIX ---
+        
+        # --- 3. Setup Layout ---
+        self._setup_ui()
 
-    def setup_ui(self):
+    def _setup_ui(self):
         """
-        Sets up the main UI components and layout.
+        Initializes and lays out the sub-widgets.
         """
-        # Set window properties (title will be set by controller via i18n)
+        
+        # --- 1. Configure Shell ---
         self.setWindowTitle("SFusion Mapper")
-        self.resize(1200, 800) # Default window size
-
-        # Create components
-        self._create_actions()
-        self._create_toolbars()
-        self._create_central_widget()
-        self._create_status_bar()
-
-    def _create_actions(self):
-        """
-        Creates all the QAction objects for the application.
-        These actions are used by menus and toolbars.
-        """
-        # Placeholder icons (paths will be managed by assets module later)
-        # TODO: Replace with QResource loading from assets/
-        icon_path = "assets/icons/"
-
-        # Action for opening a map
-        self.open_map_action = QAction(
-            QIcon(f"{icon_path}open.png"), # Placeholder icon
-            "Open Map", # Placeholder text (will be set by controller)
-            self
-        )
-        self.open_map_action.setToolTip("Open a SUMO .net.xml map file")
-
-        # Action for adding a data source folder
-        self.add_source_action = QAction(
-            QIcon(f"{icon_path}add_folder.png"), # Placeholder icon
-            "Add Data Source", # Placeholder text
-            self
-        )
-        self.add_source_action.setToolTip("Add a folder containing data files")
-
-        # Action for saving the mapping configuration
-        self.save_map_action = QAction(
-            QIcon(f"{icon_path}save.png"), # Placeholder icon
-            "Save Mapping", # Placeholder text
-            self
-        )
-        self.save_map_action.setToolTip("Save the mapping configuration to a .db file")
-
-    def _create_toolbars(self):
-        """
-        Creates and configures the main application toolbar.
-        """
-        self.main_toolbar = QToolBar("Main Toolbar")
-        self.main_toolbar.setIconSize(QSize(24, 24))
-        self.addToolBar(self.main_toolbar)
-
-        # Add actions to the toolbar
+        self.setStatusBar(self.status_bar)
+        
+        # --- 2. Configure Toolbar ---
         self.main_toolbar.addAction(self.open_map_action)
         self.main_toolbar.addAction(self.add_source_action)
         self.main_toolbar.addSeparator()
         self.main_toolbar.addAction(self.save_map_action)
-
-    def _create_central_widget(self):
-        """
-        Creates the main layout (a splitter) to hold the
-        sources panel and the map view.
-        """
-        # Main layout is a horizontal splitter
-        self.main_splitter = QSplitter(Qt.Horizontal)
-        self.setCentralWidget(self.main_splitter)
-
-        # --- Instantiate the real components ---
+        self.addToolBar(self.main_toolbar)
         
-        # Left Panel (Sources List and Details)
+        # --- 3. Create Main Widgets ---
+        self.map_view = MapView()
         self.sources_panel = SourcesPanel()
 
-        # Right Panel (Map View)
-        self.map_view = MapView()
-
-        # Add panels to the splitter
-        self.main_splitter.addWidget(self.sources_panel)
-        self.main_splitter.addWidget(self.map_view)
-
-        # Set initial sizes (Map panel is 3x wider than sources panel)
-        self.main_splitter.setStretchFactor(0, 1) # Left panel (sources)
-        self.main_splitter.setStretchFactor(1, 3) # Right panel (map)
+        # --- 4. Setup Central Widget ---
         
-    def _create_status_bar(self):
-        """
-        Creates the status bar at the bottom of the window.
-        """
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready.") # Placeholder text
+        # --- FIX (Req 3): Create Map Container ---
+        # This widget will hold the map AND the floating info panel
+        self.map_container = QWidget()
+        
+        # Create the info panel as a child of the container
+        self.info_panel = InfoPanel(self.map_container)
+        # Position it in the top-left corner
+        self.info_panel.setFixedSize(300, 150)
+        self.info_panel.move(10, 10)
+        self.info_panel.raise_() # Ensure it's on top
+        
+        # Create a layout for the container
+        container_layout = QVBoxLayout(self.map_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        # Add the map view to fill the container
+        container_layout.addWidget(self.map_view)
+        # --- END FIX ---
 
-# --- This block allows you to run this file directly for testing ---
-# (Useful to see if the layout looks correct)
-if __name__ == "__main__":
-    
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+        central_widget = QWidget()
+        central_layout = QHBoxLayout(central_widget)
+        
+        # Add the map container (which holds map + panel)
+        central_layout.addWidget(self.map_container, 1) # Give it stretch factor 1
+        # Add the sources panel
+        central_layout.addWidget(self.sources_panel, 0) # No stretch
+        
+        self.setCentralWidget(central_widget)
+        
+        # --- 5. Set Initial State ---
+        self.status_bar.showMessage("Ready.")
+        self.resize(1200, 800)

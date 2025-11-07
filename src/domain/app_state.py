@@ -26,7 +26,8 @@
 from typing import Dict, List, Any, Iterable
 
 # FIX: Changed import to be absolute from the project root (src.)
-from src.domain.entities import DataSource, MapNode
+# FIX (Req 3): Import MapEdge as well
+from src.domain.entities import DataSource, MapNode, MapEdge
 # --- END FIX ---
 
 
@@ -45,6 +46,10 @@ class AppState:
         
         # Cache for quick node lookups
         self._nodes_by_id: Dict[str, MapNode] = {}
+        
+        # --- FIX (Req 3): Add cache for quick edge lookups ---
+        self._edges_by_id: Dict[str, MapEdge] = {}
+        # --- END FIX ---
 
     # --- Map Data Methods ---
 
@@ -70,6 +75,14 @@ class AppState:
             
         print(f"AppState: Map data set. {len(self._nodes_by_id)} nodes cached.")
 
+        # --- FIX (Req 3): Build the edge cache ---
+        self._edges_by_id.clear()
+        for edge in map_data.get("edges", []):
+            self._edges_by_id[edge.id] = edge
+        print(f"AppState: {len(self._edges_by_id)} edges cached.")
+        # --- END FIX ---
+
+
     def get_map_data(self) -> Dict[str, Any]:
         """ Returns the full map data dictionary. """
         return self._map_data
@@ -83,6 +96,14 @@ class AppState:
         Gets a single MapNode from the cache by its ID.
         """
         return self._nodes_by_id.get(node_id)
+
+    # --- FIX (Req 3): Add method to get edge by ID ---
+    def get_edge_by_id(self, edge_id: str) -> MapEdge | None:
+        """
+        Gets a single MapEdge from the cache by its ID.
+        """
+        return self._edges_by_id.get(edge_id)
+    # --- END FIX ---
 
     # --- Data Source Methods ---
 

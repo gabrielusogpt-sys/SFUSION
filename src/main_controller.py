@@ -28,102 +28,75 @@
 #    to the application logic (Model). It handles toolbar actions and
 #    coordinates the other controllers.
 
-import os # FIX: Import os to build absolute paths
+# --- SRP Refactor ---
+# This class is now "clean". It no longer handles bootstrapping.
+# Its sole responsibility is to handle toolbar actions by coordinating
+# components that are *injected* into it by the AppBuilder.
+
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog
+from typing import TYPE_CHECKING
 
 # Import the View
 from ui.main_window import MainWindow
 
-# Import other Controllers
-from src.controllers.map_controller import MapController
-from src.controllers.sources_controller import SourcesController
-
 # Import Model components
-from src.domain.app_state import AppState
 from src.domain.entities import DataSource
-from src.utils.i18n import I18nManager
-from src.utils.config import ConfigManager
-from src.services.map_importer import MapImporter
-from src.services.data_importer import DataImporter
-from src.services.persistence import PersistenceService
+
+# Type hints for injected components
+if TYPE_CHECKING:
+    from src.controllers.map_controller import MapController
+    from src.controllers.sources_controller import SourcesController
+    from src.domain.app_state import AppState
+    from src.utils.i18n import I18nManager
+    from src.utils.config import ConfigManager
+    from src.services.map_importer import MapImporter
+    from src.services.data_importer import DataImporter
+    from src.services.persistence import PersistenceService
+
 
 class MainController(QObject):
     """
     Main Controller (Controller).
     Connects the MainWindow (View) signals to the application logic (Model).
     """
-    def __init__(self, view: MainWindow, app_root: str, parent=None): # FIX: Added 'app_root'
+    def __init__(
+        self, 
+        view: MainWindow,
+        app_state: 'AppState',
+        config: 'ConfigManager',
+        i18n_frontend: 'I18nManager',
+        i18n_backend: 'I18nManager',
+        map_controller: 'MapController',
+        sources_controller: 'SourcesController',
+        map_importer: 'MapImporter',
+        data_importer: 'DataImporter',
+        persistence_service: 'PersistenceService',
+        parent=None
+    ):
         """
-        Controller constructor.
+        Controller constructor (Refactored for SRP).
         
-        Args:
-            view (MainWindow): The main window view instance.
-            app_root (str): The absolute path to the application root directory.
+        This controller is "clean" and receives all its dependencies
+        (Dependency Injection) from the AppBuilder.
         """
         super().__init__(parent)
         
-        # Store reference to the View
+        print("MainController: Initializing...")
+
+        # --- Store Injected Dependencies ---
         self.view = view
+        self.app_state = app_state
+        self.config = config
+        self.i18n_frontend = i18n_frontend
+        self.i18n_backend = i18n_backend
+        self.map_controller = map_controller
+        self.sources_controller = sources_controller
+        self.map_importer = map_importer
+        self.data_importer = data_importer
+        self.persistence_service = persistence_service
         
-        # --- FIX: Store app_root to build absolute paths ---
-        self.app_root = app_root
-        print(f"MainController: Initializing with app_root: {self.app_root}")
-        # --- END FIX ---
-
-        # --- Initialize Model and Services ---
-        
-        # 1. Config
-        # FIX: Use os.path.join to create an absolute path
-        config_path = os.path.join(self.app_root, "config/settings.json")
-        self.config = ConfigManager(config_path)
-        # --- END FIX ---
-        self.config.load_config()
-        
-        # 2. i18n
-        default_lang = self.config.get("default_language", "en")
-        
-        # FIX: Use os.path.join to create absolute paths
-        locale_path = os.path.join(self.app_root, "locale")
-        locale_backend_path = os.path.join(self.app_root, "locale_backend")
-        self.i18n_frontend = I18nManager(locale_path)
-        self.i18n_backend = I18nManager(locale_backend_path)
-        # --- END FIX ---
-        
-        try:
-            self.i18n_frontend.load_language(default_lang)
-            self.i18n_backend.load_language(default_lang)
-            print(f"MainController: Language '{default_lang}' loaded.")
-        except Exception as e:
-            print(f"CRITICAL: Failed to load language files: {e}")
-            # The app will run, but with KEY_NOT_FOUND errors
-
-        # 3. Application State (Single Source of Truth)
-        self.app_state = AppState()
-
-        # 4. Services (Workers)
-        self.map_importer = MapImporter()
-        self.data_importer = DataImporter()
-        self.persistence_service = PersistenceService()
-
-        # --- Initialize Sub-Controllers ---
-        # Pass the Model (AppState) and other components to the specialists
-        
-        self.map_controller = MapController(
-            view=self.view.map_view, 
-            app_state=self.app_state
-        )
-        
-        self.sources_controller = SourcesController(
-            view=self.view.sources_panel, 
-            app_state=self.app_state
-        )
-
-        # Pass references between controllers (cross-communication)
-        self.sources_controller.set_map_controller(self.map_controller)
-        self.map_controller.set_sources_controller(self.sources_controller)
-
-        # Setup translations and connect signals
+        # --- Initialize Own Responsibilities ---
         self._setup_translations()
         self._connect_signals()
         
@@ -168,23 +141,17 @@ class MainController(QObject):
         print("MainController: View signals connected to controller slots.")
 
     # --- SLOTS (Application Logic) ---
+    # (These methods remain unchanged as they use the injected dependencies)
 
     @Slot()
     def _on_open_map(self):
         """ Slot for when the 'Open Map' action is triggered. """
         
-        # --- REVERTED FIX ---
-        # Now that i18n paths are fixed and JSON files are populated,
-        # we can restore the original translation calls.
-        
-        # TODO: Add keys to locale/en.json and locale/pt_BR.json
-        # "dialog.open_map.title", "dialog.open_map.filter"
-        
         file_path, _ = QFileDialog.getOpenFileName(
             self.view,
-            self.i18n_frontend.t("dialog.open_map.title"), # "Open Map File"
+            self.i18n_frontend.t("dialog.open_map.title"),
             self.config.get("last_map_directory", "."),
-            self.i18n_frontend.t("dialog.open_map.filter") # "SUMO Net Files (*.net.xml)"
+            self.i18n_frontend.t("dialog.open_map.filter")
         )
         
         if not file_path:
@@ -195,7 +162,7 @@ class MainController(QObject):
             # 1. Call the Map Importer service
             map_data = self.map_importer.load_file(file_path)
             
-            # 2. Update the Model (AppState) using the corrected method
+            # 2. Update the Model (AppState)
             self.app_state.set_map_data(map_data, file_path)
             
             # 3. Tell MapController to update the View
@@ -204,7 +171,6 @@ class MainController(QObject):
             # 4. Tell SourcesController to update (clear) its View
             self.sources_controller.refresh_list()
             
-            # TODO: Add key "status_bar.map_loaded" to locale files
             self.view.status_bar.showMessage(self.i18n_frontend.t("status_bar.map_loaded").format(path=file_path))
             
         except Exception as e:
@@ -216,12 +182,9 @@ class MainController(QObject):
     def _on_add_source(self):
         """ Slot for when the 'Add Data Source' action is triggered. """
         
-        # TODO: Add keys to locale files
-        # "dialog.add_source.title"
-        
         folder_path = QFileDialog.getExistingDirectory(
             self.view,
-            self.i18n_frontend.t("dialog.add_source.title") # "Select Data Source Folder"
+            self.i18n_frontend.t("dialog.add_source.title")
         )
         
         if not folder_path:
@@ -236,7 +199,7 @@ class MainController(QObject):
             # 2. Create the new Model entity
             new_source = DataSource(
                 path=folder_path,
-                parser_id=analysis.get("file_type") # Use file type as placeholder parser
+                parser_id=analysis.get("file_type")
             )
             
             # 3. Update the Model (AppState)
@@ -245,12 +208,10 @@ class MainController(QObject):
             # 4. Tell SourcesController to update its View
             self.sources_controller.refresh_list()
             
-            # TODO: Add key "status_bar.source_added" to locale files
             self.view.status_bar.showMessage(self.i18n_frontend.t("status_bar.source_added").format(path=folder_path))
 
         except Exception as e:
             print(f"Error analyzing folder: {e}")
-            # TODO: Add key "errors.data_importer.analysis_failed" to backend locale files
             error_msg = self.i18n_backend.t("errors.data_importer.analysis_failed").format(error=e)
             self.view.status_bar.showMessage(error_msg)
 
@@ -260,18 +221,14 @@ class MainController(QObject):
         
         map_path = self.app_state.get_map_file_path()
         if not map_path:
-            # TODO: Add key "status_bar.save_no_map_error" to locale files
             self.view.status_bar.showMessage(self.i18n_frontend.t("status_bar.save_no_map_error"))
             return # Can't save without a map loaded
-
-        # TODO: Add keys to locale files
-        # "dialog.save_map.title", "dialog.save_map.filter"
         
         save_path, _ = QFileDialog.getSaveFileName(
             self.view,
-            self.i18n_frontend.t("dialog.save_map.title"), # "Save Mapping File"
+            self.i18n_frontend.t("dialog.save_map.title"),
             "mapping.db",
-            self.i18n_frontend.t("dialog.save_map.filter") # "SQLite Database (*.db)"
+            self.i18n_frontend.t("dialog.save_map.filter")
         )
 
         if not save_path:
@@ -290,7 +247,6 @@ class MainController(QObject):
                 data_sources=all_sources
             )
             
-            # TODO: Add key "status_bar.save_success" to locale files
             self.view.status_bar.showMessage(self.i18n_frontend.t("status_bar.save_success").format(path=save_path))
             
         except Exception as e:

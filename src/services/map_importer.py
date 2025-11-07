@@ -60,24 +60,35 @@ class MapImporter:
         
         try:
             # Parse the XML file
+            # lxml.etree.parse can natively handle .gz files
             tree = etree.parse(file_path)
             root = tree.getroot()
             
             nodes = []
             edges = []
 
-            # 1. Parse Junctions (Nodes)
-            # We only care about 'internal' junctions for associations
-            for junction in root.xpath("//junction[@type='internal']"):
+            # --- FIX: Load ALL junctions (nodes), not just 'internal' ---
+            # We want to render the full map for visual context.
+            for junction in root.xpath("//junction"):
+            # --- END FIX ---
                 node_id = junction.get("id")
                 x = float(junction.get("x"))
                 y = float(junction.get("y"))
                 
+                # --- FIX: Read the node type (for Problem 2) ---
+                # Get the 'type' attribute (e.g., "internal", "priority")
+                node_type = junction.get("type", "unknown")
+                # --- END FIX ---
+                
                 # We invert 'y' because Qt's Y-axis is inverted (0 is top)
-                nodes.append(MapNode(id=node_id, x=x, y=-y))
+                # --- FIX: Pass the node_type to the entity ---
+                nodes.append(MapNode(id=node_id, x=x, y=-y, node_type=node_type))
+                # --- END FIX ---
 
-            # 2. Parse Edges (for visual context)
-            for edge in root.xpath("//edge[not(starts-with(@function, 'internal'))]"):
+            # --- FIX: Load ALL edges, not just non-internal ones ---
+            # We want to render the full map.
+            for edge in root.xpath("//edge"):
+            # --- END FIX ---
                 edge_id = edge.get("id")
                 from_node = edge.get("from")
                 to_node = edge.get("to")
@@ -105,7 +116,7 @@ class MapImporter:
                     shape=shape_coords
                 ))
             
-            print(f"MapImporter: Parsing complete. Found {len(nodes)} internal nodes and {len(edges)} edges.")
+            print(f"MapImporter: Parsing complete. Found {len(nodes)} total nodes and {len(edges)} total edges.")
             
             return {
                 "nodes": nodes,

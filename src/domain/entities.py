@@ -66,6 +66,16 @@ class MapNode:
     id: str
     x: float
     y: float # Y-coordinate is inverted (Qt style)
+    
+    # --- FIX: Add fields for new features ---
+    # Field to store the junction type (e.g., "internal", "priority")
+    # This will be used to solve the "Vários Nós" problem (Req 2).
+    node_type: str = "unknown"
+    
+    # Field to store the user-defined "real name" (Req 3).
+    real_name: str | None = None
+    # --- END FIX ---
+
 
 @dataclass
 class MapEdge:
@@ -76,3 +86,8 @@ class MapEdge:
     from_node: str
     to_node: str
     shape: List[Tuple[float, float]] = field(default_factory=list)
+    
+    # --- FIX: Add field for new features ---
+    # Field to store the user-defined "real name" (Req 3).
+    real_name: str | None = None
+    # --- END FIX ---

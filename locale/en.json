@@ -16,7 +16,7 @@
     "status_bar.save_success": "Mapping saved successfully: {path}",
 
     "dialog.open_map.title": "Open Map File",
-    "dialog.open_map.filter": "SUMO Net Files (*.net.xml);;All Files (*)",
+    "dialog.open_map.filter": "SUMO Net Files (*.net.xml *.net.xml.gz);;All Files (*)",
     "dialog.add_source.title": "Select Data Source Folder",
     "dialog.save_map.title": "Save Mapping File",
     "dialog.save_map.filter": "SQLite Database (*.db);;All Files (*)",

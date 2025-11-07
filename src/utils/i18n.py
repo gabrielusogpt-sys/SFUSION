@@ -86,12 +86,16 @@ class I18nManager:
         Returns:
             str: The translated string, the default, or a warning message.
         """
-        # Simple dot-notation lookup
+        # --- FIX ---
+        # The JSON files use flat keys (e.g., "main_window.window_title")
+        # not nested keys. The original code (which split the key by '.')
+        # was incorrect for the JSON file structure.
+        #
+        # We must look up the entire key string directly.
         try:
-            value = self._translations
-            for k in key.split('.'):
-                value = value[k]
-            return value
+            return self._translations[key]
+        
+        # --- END FIX ---
         except KeyError:
             print(f"Warning: Translation key not found: '{key}'")
             if default:

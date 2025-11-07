@@ -16,7 +16,7 @@
     "status_bar.save_success": "Mapeamento salvo com sucesso: {path}",
 
     "dialog.open_map.title": "Abrir Ficheiro de Mapa",
-    "dialog.open_map.filter": "Ficheiros de Rede SUMO (*.net.xml);;Todos os Ficheiros (*)",
+    "dialog.open_map.filter": "Ficheiros de Rede SUMO (*.net.xml *.net.xml.gz);;Todos os Ficheiros (*)",
     "dialog.add_source.title": "Selecionar Pasta da Fonte de Dados",
     "dialog.save_map.title": "Salvar Ficheiro de Mapeamento",
     "dialog.save_map.filter": "Base de Dados SQLite (*.db);;Todos os Ficheiros (*)",

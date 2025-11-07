@@ -26,7 +26,7 @@
 # Description:
 #    Main application entry point.
 #    Initializes the Qt Application, View (passive), and
-#    Controller (active).
+#    uses the AppBuilder (Core) to create the Controller.
 
 import sys
 import os
@@ -46,9 +46,12 @@ sys.path.insert(0, APP_ROOT)
 
 from PySide6.QtWidgets import QApplication
 
-# --- FIX: Corrected import paths based on directory structure ---
-from ui.main_window import MainWindow  # 'ui' is at the root
-from src.main_controller import MainController # 'src' is at the root
+# Import the View
+from ui.main_window import MainWindow
+
+# --- FIX: Import the AppBuilder, not the MainController ---
+# The AppBuilder now handles the creation of the MainController (SRP)
+from src.core.app_builder import AppBuilder
 # --- END FIX ---
 
 if __name__ == "__main__":
@@ -63,16 +66,22 @@ if __name__ == "__main__":
     print("SFusion Mapper: Creating View (MainWindow)...")
     view = MainWindow()
     
-    # 2. Create the Controller
-    # The controller initializes the Model (AppState) and services
-    print("SFUSION Mapper: Creating Controller (MainController)...")
-    # We pass 'app_root' to the controller so it can find 'config/' and 'locale/'
-    controller = MainController(view=view, app_root=APP_ROOT)
+    # --- FIX: Use the AppBuilder to construct the application ---
+    # 2. Create the Builder
+    print("SFusion Mapper: Creating AppBuilder (src/core/app_builder.py)...")
+    builder = AppBuilder(view=view, app_root=APP_ROOT)
+
+    # 3. Build the application
+    # The builder creates all services, models, controllers,
+    # injects them, and returns the configured main_controller.
+    print("SFusion Mapper: Building application components...")
+    controller = builder.build_application()
+    # --- END FIX ---
     
-    # 3. Show the View
-    print("SFUSION Mapper: Showing main window...")
+    # 4. Show the View
+    print("SFusion Mapper: Showing main window...")
     view.show()
     
-    # 4. Run the application
-    print("SFUSION Mapper: Starting event loop (app.exec())...")
+    # 5. Run the application
+    print("SFusion Mapper: Starting event loop (app.exec())...")
     sys.exit(app.exec())

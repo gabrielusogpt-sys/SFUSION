@@ -24,7 +24,10 @@
 #    component that emits signals for the controller.
 
 from PySide6.QtCore import Qt, Signal, QPoint
-from PySide6.QtGui import QPainter, QTransform, QMouseEvent, QContextMenuEvent
+# FIX: Import QBrush and QColor for setting the background
+from PySide6.QtGui import (
+    QPainter, QTransform, QMouseEvent, QContextMenuEvent, QBrush, QColor
+)
 from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsItem, QMenu
 
 class MapView(QGraphicsView):
@@ -37,10 +40,13 @@ class MapView(QGraphicsView):
     # Emitted when a node (QGraphicsEllipseItem) is clicked
     nodeClicked = Signal(str)
     
-    # FIX: Define the missing signal for empty space clicks
+    # --- FIX (Req 3): Add signal for edge clicks ---
+    # Emitted when an edge (QGraphicsPathItem) is clicked
+    edgeClicked = Signal(str)
+    # --- END FIX ---
+    
     # Emitted when the empty background of the scene is clicked
     emptySpaceClicked = Signal()
-    # --- END FIX ---
     
     
     def __init__(self, parent=None):
@@ -52,6 +58,11 @@ class MapView(QGraphicsView):
         # 1. Setup Scene
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
+        
+        # --- FIX: Set a friendly background color (Problem 2) ---
+        # Set the scene background to white instead of default gray
+        self.scene.setBackgroundBrush(QBrush(QColor("#FFFFFF")))
+        # --- END FIX ---
         
         # 2. Setup Render Hints
         self.setRenderHint(QPainter.Antialiasing)
@@ -126,14 +137,21 @@ class MapView(QGraphicsView):
             # Get the item at the click position
             item = self.itemAt(event.pos())
             
+            # --- FIX (Req 3): Check for Node (0) or Edge (1) click ---
             if item and item.data(0): # data(0) holds the Node ID
                 # Clicked on a node
                 node_id = item.data(0)
                 self.nodeClicked.emit(node_id)
+                
+            elif item and item.data(1): # data(1) holds the Edge ID
+                # Clicked on an edge (street)
+                edge_id = item.data(1)
+                self.edgeClicked.emit(edge_id)
+                
             else:
-                # FIX: Clicked on empty space
+                # Clicked on empty space
                 self.emptySpaceClicked.emit()
-                # --- END FIX ---
+            # --- END FIX ---
         
         # Pass the event to the base class (for panning)
         super().mousePressEvent(event)
