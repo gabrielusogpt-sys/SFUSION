@@ -24,47 +24,55 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Main entry point for the SFusion Mapper application.
-#    This file initializes the QApplication, the main window (View),
-#    and the main controller, connecting them together.
+#    Main application entry point.
+#    Initializes the Qt Application, View (passive), and
+#    Controller (active).
 
 import sys
+import os
+
+# --- FIX: Robust Pathing ---
+# Calculate the application's root directory (where sfusion.py lives)
+# This ensures that relative paths for 'locale' and 'config' work
+# regardless of where the script is executed from (e.g., from VS Code).
+APP_ROOT = os.path.abspath(os.path.dirname(__file__))
+
+# --- FIX: Add the Project ROOT to the path ---
+# This allows for absolute imports like 'from src.main_controller...'
+# and 'from ui.main_window...'
+sys.path.insert(0, APP_ROOT)
+# --- END FIX ---
+
+
 from PySide6.QtWidgets import QApplication
-from ui.main_window import MainWindow
 
-# Import the main controller from its new location
-from src.main_controller import MainController
-
-# TODO: Import Model components when they are created
-# from src.domain.app_state import AppState
-
-def main():
-    """
-    Main application function.
-    Initializes the application, the main view, and the main controller.
-    """
-    app = QApplication(sys.argv)
-    
-    # --- View Layer ---
-    # 1. Create the main window (the View)
-    window = MainWindow()
-    
-    # --- Model Layer (placeholder) ---
-    # TODO: 2. Create the application state
-    # app_state = AppState()
-
-    # --- Controller Layer (Initialization) ---
-    # 3. Create the main controller and pass it the view (and model)
-    #    The controller's __init__ will handle connecting signals.
-    main_controller = MainController(view=window)
-    
-    # --- Start Application ---
-    # The controller (when implemented) will be responsible for
-    # setting the final window title, loading translations, etc.
-    window.show()
-    
-    sys.exit(app.exec())
+# --- FIX: Corrected import paths based on directory structure ---
+from ui.main_window import MainWindow  # 'ui' is at the root
+from src.main_controller import MainController # 'src' is at the root
+# --- END FIX ---
 
 if __name__ == "__main__":
-    # This is the main entry point of the application
-    main()
+    
+    print(f"SFusion Mapper: Initializing...")
+    print(f"SFusion Mapper: Application Root Path: {APP_ROOT}")
+    
+    # Create the Qt Application
+    app = QApplication(sys.argv)
+    
+    # 1. Create the View
+    print("SFusion Mapper: Creating View (MainWindow)...")
+    view = MainWindow()
+    
+    # 2. Create the Controller
+    # The controller initializes the Model (AppState) and services
+    print("SFUSION Mapper: Creating Controller (MainController)...")
+    # We pass 'app_root' to the controller so it can find 'config/' and 'locale/'
+    controller = MainController(view=view, app_root=APP_ROOT)
+    
+    # 3. Show the View
+    print("SFUSION Mapper: Showing main window...")
+    view.show()
+    
+    # 4. Run the application
+    print("SFUSION Mapper: Starting event loop (app.exec())...")
+    sys.exit(app.exec())

@@ -28,6 +28,7 @@
 #    to the application logic (Model). It handles toolbar actions and
 #    coordinates the other controllers.
 
+import os # FIX: Import os to build absolute paths
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QFileDialog
 
@@ -52,30 +53,43 @@ class MainController(QObject):
     Main Controller (Controller).
     Connects the MainWindow (View) signals to the application logic (Model).
     """
-    def __init__(self, view: MainWindow, parent=None):
+    def __init__(self, view: MainWindow, app_root: str, parent=None): # FIX: Added 'app_root'
         """
         Controller constructor.
         
         Args:
             view (MainWindow): The main window view instance.
+            app_root (str): The absolute path to the application root directory.
         """
         super().__init__(parent)
         
         # Store reference to the View
         self.view = view
         
-        print("MainController: Initializing...")
+        # --- FIX: Store app_root to build absolute paths ---
+        self.app_root = app_root
+        print(f"MainController: Initializing with app_root: {self.app_root}")
+        # --- END FIX ---
 
         # --- Initialize Model and Services ---
         
         # 1. Config
-        self.config = ConfigManager("config/settings.json")
+        # FIX: Use os.path.join to create an absolute path
+        config_path = os.path.join(self.app_root, "config/settings.json")
+        self.config = ConfigManager(config_path)
+        # --- END FIX ---
         self.config.load_config()
         
         # 2. i18n
         default_lang = self.config.get("default_language", "en")
-        self.i18n_frontend = I18nManager("locale")
-        self.i18n_backend = I18nManager("locale_backend")
+        
+        # FIX: Use os.path.join to create absolute paths
+        locale_path = os.path.join(self.app_root, "locale")
+        locale_backend_path = os.path.join(self.app_root, "locale_backend")
+        self.i18n_frontend = I18nManager(locale_path)
+        self.i18n_backend = I18nManager(locale_backend_path)
+        # --- END FIX ---
+        
         try:
             self.i18n_frontend.load_language(default_lang)
             self.i18n_backend.load_language(default_lang)
@@ -158,6 +172,10 @@ class MainController(QObject):
     @Slot()
     def _on_open_map(self):
         """ Slot for when the 'Open Map' action is triggered. """
+        
+        # --- REVERTED FIX ---
+        # Now that i18n paths are fixed and JSON files are populated,
+        # we can restore the original translation calls.
         
         # TODO: Add keys to locale/en.json and locale/pt_BR.json
         # "dialog.open_map.title", "dialog.open_map.filter"

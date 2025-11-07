@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,98 +19,84 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Utility class (Model/Service) responsible for loading and managing
-#    internationalization (i18n) translation files from .json sources.
+#    I18nManager (Utility). Loads and manages translation .json files.
 
 import json
 import os
-from typing import Dict, Any
 
 class I18nManager:
     """
-    Manages loading and retrieving translated strings from JSON files.
+    Manages loading and accessing translations from .json files.
     """
-
     def __init__(self, locale_dir: str):
         """
-        Initializes the translation manager.
-
+        Initializes the manager with the path to the locale directory.
+        
         Args:
-            locale_dir (str): The path to the directory containing
-                              the locale .json files (e.g., "locale/").
+            locale_dir (str): The absolute path to the 'locale'
+                              or 'locale_backend' directory.
         """
-        if not os.path.isdir(locale_dir):
-            raise FileNotFoundError(f"Locale directory not found: {locale_dir}")
         self.locale_dir = locale_dir
-        self.translations: Dict[str, Any] = {}
+        self._translations = {}
         print(f"I18nManager: Initialized for directory: {self.locale_dir}")
 
-    def load_language(self, lang_code: str = "en"):
+    def load_language(self, language_code: str):
         """
-        Loads a language file (e.g., "pt_BR.json") into memory.
-
-        Args:
-            lang_code (str): The language code to load (e.g., "en", "pt_BR").
-
-        Raises:
-            FileNotFoundError: If the specified language file does not exist.
-            json.JSONDecodeError: If the file is not valid JSON.
-        """
-        file_path = os.path.join(self.locale_dir, f"{lang_code}.json")
+        Loads a specific language file (e.g., "pt_BR.json") from the
+        locale directory into memory.
         
-        if not os.path.isfile(file_path):
-            print(f"Error: Language file not found: {file_path}")
-            raise FileNotFoundError(f"Language file not found: {file_path}")
-
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                self.translations = json.load(f)
-            print(f"I18nManager: Successfully loaded language '{lang_code}' from {file_path}.")
-        except json.JSONDecodeError as e:
-            print(f"Error: Failed to parse JSON from {file_path}: {e}")
-            self.translations = {} # Reset to empty on failure
-            raise # Re-raise for the controller to catch
-        except Exception as e:
-            print(f"Error: An unexpected error occurred loading {file_path}: {e}")
-            self.translations = {}
-            raise
-
-    def translate(self, key: str) -> str:
-        """
-        Gets a translated string for a given key.
-
         Args:
-            key (str): The key to translate (e.g., "window_title").
-
-        Returns:
-            str: The translated string, or a fallback string if the key
-                 is not found in the loaded dictionary.
+            language_code (str): The language code (e.g., "pt_BR", "en").
+            
+        Raises:
+            Exception: Propagates exceptions if file loading fails critically.
         """
-        if not self.translations:
-            print("Warning: Attempted to translate, but no translations are loaded.")
-            return f"KEY_ERROR:{key}"
-            
-        # Access nested keys (e.g., "toolbar.open_map")
+        lang_file_path = os.path.join(self.locale_dir, f"{language_code}.json")
+        
+        if not os.path.exists(lang_file_path):
+            print(f"Warning: Language file not found at {lang_file_path}. Using empty.")
+            self._translations = {}
+            return
+
         try:
-            value = self.translations
-            for k in key.split('.'):
-                if not isinstance(value, dict):
-                    raise KeyError
-                value = value[k]
+            with open(lang_file_path, 'r', encoding='utf-8') as f:
+                self._translations = json.load(f)
+            print(f"I18nManager: Successfully loaded language '{language_code}' from {lang_file_path}.")
             
-            if isinstance(value, str):
-                return value
-            else:
-                # The key exists but its value is not a string (e.g., it's a dict)
-                print(f"Warning: Key '{key}' does not map to a final string value.")
-                return f"KEY_IS_DICT:{key}"
-                
+        except json.JSONDecodeError as e:
+            # FIX: Added robust error logging
+            print(f"CRITICAL: Failed to parse {lang_file_path}: {e}. Using empty.")
+            self._translations = {}
+            raise e # Re-raise to stop execution if translations fail
+        except Exception as e:
+            # FIX: Added robust error logging
+            print(f"CRITICAL: Failed to read {lang_file_path}: {e}. Using empty.")
+            self._translations = {}
+            raise e # Re-raise to stop execution
+            # --- END FIX ---
+
+    def t(self, key: str, default: str = None) -> str:
+        """
+        Translates a given key.
+        
+        Args:
+            key (str): The key to translate (e.g., "main_window.title").
+            default (str, optional): A fallback value if the key is not found.
+        
+        Returns:
+            str: The translated string, the default, or a warning message.
+        """
+        # Simple dot-notation lookup
+        try:
+            value = self._translations
+            for k in key.split('.'):
+                value = value[k]
+            return value
         except KeyError:
             print(f"Warning: Translation key not found: '{key}'")
-            return f"KEY_NOT_FOUND:{key}"
-
-    def t(self, key: str) -> str:
-        """
-        A short alias for the translate() method.
-        """
-        return self.translate(key)
+            if default:
+                return default
+            return f"KEY_NOT_FOUND: {key}"
+        except Exception as e:
+            print(f"Error during translation of key '{key}': {e}")
+            return f"ERROR: {key}"

@@ -1,12 +1,10 @@
 {
-  "errors": {
-    "map_importer": {
-      "file_not_found": "Error: Map file not found at path: {path}",
-      "invalid_xml": "Error: Failed to parse map file. The XML is invalid: {error}",
-      "unknown_error": "An unknown error occurred while parsing the map."
-    },
-    "persistence": {
-      "save_failed": "Failed to save mapping database: {error}"
-    }
-  }
+    "errors.generic": "An unexpected error occurred: {error}",
+    "errors.config.read_failed": "Failed to read configuration file: {error}",
+    "errors.config.write_failed": "Failed to write configuration file: {error}",
+    "errors.i18n.load_failed": "Failed to load language file {lang}: {error}",
+
+    "errors.map_importer.invalid_xml": "Error: Invalid map XML file. {error}",
+    "errors.data_importer.analysis_failed": "Error: Failed to analyze data folder. {error}",
+    "errors.persistence.save_failed": "Error: Failed to save mapping file. {error}"
 }

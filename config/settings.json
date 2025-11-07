@@ -1,5 +1,5 @@
 {
-  "default_language": "pt_BR",
-  "log_level": "INFO",
-  "last_map_directory": "/home/user/maps"
+    "default_language": "pt_BR",
+    "last_map_directory": ".",
+    "style": "default"
 }

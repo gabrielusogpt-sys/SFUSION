@@ -1,31 +1,41 @@
 {
-  "main_window": {
-    "window_title": "SFusion Mapper"
-  },
-  "toolbar": {
-    "main": "Main Toolbar",
-    "open_map": "Open Map",
-    "open_map_tooltip": "Open a SUMO .net.xml map file",
-    "add_source": "Add Data Source",
-    "add_source_tooltip": "Add a folder containing data files",
-    "save_map": "Save Mapping",
-    "save_map_tooltip": "Save the mapping configuration to a .db file"
-  },
-  "sources_panel": {
-    "list_title": "Data Sources",
-    "details_title": "Source Details",
-    "type_label": "Type:",
-    "type_global": "Global",
-    "type_local": "Local",
-    "associate_button": "Associate with Map Element",
-    "status_label": "Status:",
-    "status_not_associated": "Not associated."
-  },
-  "status_bar": {
-    "ready": "Ready.",
-    "controller_connected": "Ready (Controller connected).",
-    "action_open_map": "Action: 'Open Map' triggered (logic not implemented).",
-    "action_add_source": "Action: 'Add Source' triggered (logic not implemented).",
-    "action_save_map": "Action: 'Save Map' triggered (logic not implemented)."
-  }
+    "main_window.window_title": "SFusion Mapper (AGPL-3.0) - Noxfort Labs",
+    
+    "toolbar.main": "Main Toolbar",
+    "toolbar.open_map": "Open Map",
+    "toolbar.open_map_tooltip": "Open a SUMO network file (.net.xml)",
+    "toolbar.add_source": "Add Source",
+    "toolbar.add_source_tooltip": "Add a data source folder",
+    "toolbar.save_map": "Save Mapping",
+    "toolbar.save_map_tooltip": "Save the current mapping to a .db file",
+
+    "status_bar.ready": "Ready.",
+    "status_bar.map_loaded": "Map loaded successfully: {path}",
+    "status_bar.source_added": "Source added: {path}",
+    "status_bar.save_no_map_error": "Error: A map must be loaded before saving.",
+    "status_bar.save_success": "Mapping saved successfully: {path}",
+
+    "dialog.open_map.title": "Open Map File",
+    "dialog.open_map.filter": "SUMO Net Files (*.net.xml);;All Files (*)",
+    "dialog.add_source.title": "Select Data Source Folder",
+    "dialog.save_map.title": "Save Mapping File",
+    "dialog.save_map.filter": "SQLite Database (*.db);;All Files (*)",
+
+    "map_view.context_menu.title": "Map Actions",
+    "map_view.context_menu.fit_zoom": "Fit View to Map",
+    "map_view.context_menu.clear_selection": "Clear Selection",
+
+    "sources_panel.group_title.list": "Data Sources",
+    "sources_panel.group_title.details": "Source Details",
+    "sources_panel.label.id": "ID:",
+    "sources_panel.label.path": "Path:",
+    "sources_panel.label.type": "Type:",
+    "sources_panel.radio.global": "Global (Entire Map)",
+    "sources_panel.radio.local": "Local (Specific Node)",
+    "sources_panel.button.associate": "Associate with Map...",
+    "sources_panel.label.status": "Status:",
+    "sources_panel.status.unassociated": "Not Associated",
+    "sources_panel.status.associated_global": "Associated (Global)",
+    "sources_panel.status.associated_node": "Associated: Node {node_id}",
+    "sources_panel.status.selecting_node": "Click a map node to associate..."
 }

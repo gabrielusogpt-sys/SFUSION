@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,88 +19,102 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Defines the AppState class, which acts as the "single source of truth"
-#    for the application's runtime state. It holds the currently loaded
-#    map data and the list of configured data sources.
+#    AppState (Model). The "Single Source of Truth" for the application.
+#    It holds the map data and source list in memory.
+#    It is completely independent of Qt/UI.
 
-from typing import Optional, Dict, List
-from .entities import MapData, DataSource
+from typing import Dict, List, Any, Iterable
+
+# FIX: Changed import to be absolute from the project root (src.)
+from src.domain.entities import DataSource, MapNode
+# --- END FIX ---
+
 
 class AppState:
     """
-    Holds the runtime state of the application (Model).
-
-    This class is the "single source of truth". Controllers modify this
-    state, and then update the Views based on this state.
-    It is a pure Python object, not tied to Qt.
+    Holds the application's in-memory state.
+    This is the "Single Source of Truth" (Model).
     """
-    
     def __init__(self):
-        """
-        Initializes the application state.
-        """
-        # The currently loaded map data (nodes, edges)
-        self.map_data: Optional[MapData] = None
-        # The path of the loaded map file
-        self.map_file_path: Optional[str] = None
+        # The list of all loaded data sources
+        self._sources: Dict[str, DataSource] = {}
         
-        # The list of data sources, indexed by their unique ID
-        self.data_sources: Dict[str, DataSource] = {}
+        # The parsed map data
+        self._map_data: Dict[str, Any] = {}
+        self._map_file_path: str | None = None
         
-        print("AppState: Initialized (Single Source of Truth).")
+        # Cache for quick node lookups
+        self._nodes_by_id: Dict[str, MapNode] = {}
 
-    # --- Map State Methods ---
+    # --- Map Data Methods ---
 
-    def set_map_data(self, map_data: MapData, map_path: str):
+    def set_map_data(self, map_data: Dict[str, Any], file_path: str):
         """
-        Sets the loaded map data and clears any old source mappings.
-        Called by MainController after a successful map load.
-        """
-        print(f"AppState: Setting map data ({len(map_data.nodes)} nodes, {len(map_data.edges)} edges).")
-        print(f"AppState: Setting map path: {map_path}")
+        Sets the loaded map data, replacing any existing data.
         
-        self.map_data = map_data
-        self.map_file_path = map_path
-
-        # When a new map is loaded, old associations are invalid
+        Args:
+            map_data (Dict): The dictionary from MapImporter
+                             (containing 'nodes' and 'edges').
+            file_path (str): The path to the .net.xml file.
+        """
+        self._map_data = map_data
+        self._map_file_path = file_path
+        
+        # Clear existing data sources, as they are map-specific
         self.clear_all_sources()
-
-    def get_map_data(self) -> Optional[MapData]:
-        """ Returns the currently loaded map data. """
-        return self.map_data
         
-    def get_map_file_path(self) -> Optional[str]:
-        """ Returns the file path of the currently loaded map. """
-        return self.map_file_path
+        # Build the node cache
+        self._nodes_by_id.clear()
+        for node in map_data.get("nodes", []):
+            self._nodes_by_id[node.id] = node
+            
+        print(f"AppState: Map data set. {len(self._nodes_by_id)} nodes cached.")
 
-    # --- Data Source State Methods ---
+    def get_map_data(self) -> Dict[str, Any]:
+        """ Returns the full map data dictionary. """
+        return self._map_data
 
-    def add_source(self, data_source: DataSource):
+    def get_map_file_path(self) -> str | None:
+        """ Returns the path to the loaded .net.xml file. """
+        return self._map_file_path
+        
+    def get_node_by_id(self, node_id: str) -> MapNode | None:
+        """
+        Gets a single MapNode from the cache by its ID.
+        """
+        return self._nodes_by_id.get(node_id)
+
+    # --- Data Source Methods ---
+
+    def add_source(self, source: DataSource):
         """
         Adds a new data source to the state.
-        Called by SourcesController.
-        """
-        if data_source.id in self.data_sources:
-            print(f"Warning: Source ID {data_source.id} already exists. Overwriting.")
         
-        print(f"AppState: Adding source '{data_source.path}' (ID: {data_source.id}).")
-        self.data_sources[data_source.id] = data_source
+        Args:
+            source (DataSource): The new DataSource entity to add.
+        """
+        if source.id in self._sources:
+            print(f"Warning: Source with ID {source.id} already exists. Overwriting.")
         
-    def get_source(self, source_id: str) -> Optional[DataSource]:
-        """
-        Retrieves a single data source by its unique ID.
-        """
-        return self.data_sources.get(source_id)
+        self._sources[source.id] = source
+        print(f"AppState: Source '{source.id}' added.")
 
-    def get_all_sources(self) -> List[DataSource]:
+    def get_source_by_id(self, source_id: str) -> DataSource | None:
         """
-        Returns a list of all current data sources.
+        Gets a single data source by its unique ID.
         """
-        return list(self.data_sources.values())
+        return self._sources.get(source_id)
+
+    def get_all_sources(self) -> Iterable[DataSource]:
+        """
+        Returns an iterable of all loaded DataSource entities.
+        """
+        return self._sources.values()
 
     def clear_all_sources(self):
         """
-        Removes all data sources from the state.
+        Removes all data sources from memory.
         """
-        print("AppState: Clearing all data sources.")
-        self.data_sources.clear()
+        count = len(self._sources)
+        self._sources.clear()
+        print(f"AppState: Cleared {count} data sources.")

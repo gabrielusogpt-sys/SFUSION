@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,143 +19,121 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Service class (Model) responsible for saving the application state
-#    (the mapping configuration) to a SQLite (.db) database file.
+#    Persistence Service (Service). Saves the mapping to a .db (Model logic).
+#    It is completely independent of Qt/UI.
 
 import sqlite3
-from typing import List, Optional
+import os
+from typing import List, Iterable
 
-# Import domain entities
-from src.domain.entities import DataSource, MapData, SourceType, ElementType
+# FIX: Changed import to be absolute from the project root (src.)
+from src.domain.entities import DataSource, AssociationType
+# --- END FIX ---
+
 
 class PersistenceService:
     """
-    Saves and loads mapping configurations to/from a SQLite database.
-    
-    This is a "worker" service. It is called by a controller,
-    it performs a task (file I/O), and returns. It holds no state.
+    Service class responsible for saving the final mapping configuration
+    to an SQLite (.db) database file.
     """
     
     def __init__(self):
         """
-        Initializes the PersistenceService.
+        Constructor.
         """
-        print("PersistenceService: Initialized.")
+        pass
 
     def save_mapping(self, 
                      save_path: str, 
                      map_base_path: str, 
-                     data_sources: List[DataSource]):
+                     data_sources: Iterable[DataSource]):
         """
-        Saves the entire mapping configuration to a SQLite .db file.
-        This operation overwrites any existing file at save_path.
+        Creates or overwrites a .db file with the current mapping config.
         
         Args:
-            save_path (str): The absolute path to save the .db file.
-            map_base_path (str): The path to the .net.xml file being used.
-            data_sources (List[DataSource]): The list of configured data sources.
+            save_path (str): The absolute path to the .db file to create.
+            map_base_path (str): The absolute path to the .net.xml file used.
+            data_sources (Iterable[DataSource]): A list of all DataSource entities.
             
         Raises:
-            sqlite3.Error: If any database error occurs.
-            Exception: For other unexpected errors.
+            Exception: If sqlite3 fails to write to the database.
         """
-        print(f"PersistenceService: Attempting to save mapping to {save_path}...")
+        print(f"PersistenceService: Saving mapping to {save_path}...")
         
+        # Ensure directory exists (though QFileDialog usually handles this)
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        
+        # Delete the file if it already exists to ensure a fresh start
+        if os.path.exists(save_path):
+            os.remove(save_path)
+            
         try:
-            # Connect (this creates the file if it doesn't exist)
+            # Connect (this will create the file)
             with sqlite3.connect(save_path) as conn:
                 cursor = conn.cursor()
                 
-                # Use a transaction for an atomic save
-                cursor.execute("BEGIN TRANSACTION")
+                # --- 1. Create ConfiguracaoGeral Table ---
+                # Stores the path to the map this config was based on
+                cursor.execute("""
+                CREATE TABLE ConfiguracaoGeral (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chave TEXT UNIQUE NOT NULL,
+                    valor TEXT NOT NULL
+                )
+                """)
                 
-                # 1. (Re)Create the database schema
-                self._create_tables(cursor)
+                # --- 2. Create MapeamentoFontes Table ---
+                # Stores the main mapping relationships
+                cursor.execute("""
+                CREATE TABLE MapeamentoFontes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fonte_id_unico TEXT NOT NULL,
+                    caminho_dados TEXT NOT NULL,
+                    parser_id TEXT,
+                    tipo_associacao TEXT NOT NULL,
+                    associacao_local_id TEXT
+                )
+                """)
                 
-                # 2. Save the general config (map path)
-                self._save_config(cursor, map_base_path)
+                conn.commit()
+                print("PersistenceService: Tables created successfully.")
+
+                # --- 3. Insert General Config Data ---
+                map_filename = os.path.basename(map_base_path)
+                cursor.execute(
+                    "INSERT INTO ConfiguracaoGeral (chave, valor) VALUES (?, ?)",
+                    ("map_base_file", map_filename)
+                )
                 
-                # 3. Save all data sources
-                self._save_data_sources(cursor, data_sources)
+                # --- 4. Insert Data Source Mappings ---
+                rows_to_insert = []
+                for source in data_sources:
+                    rows_to_insert.append((
+                        source.id,
+                        source.path,
+                        source.parser_id,
+                        source.association_type.value, # "GLOBAL" or "LOCAL"
+                        source.associated_node_id # Will be NULL if not applicable
+                    ))
                 
-                # 4. Commit the transaction
+                cursor.executemany("""
+                INSERT INTO MapeamentoFontes 
+                    (fonte_id_unico, caminho_dados, parser_id, tipo_associacao, associacao_local_id)
+                VALUES (?, ?, ?, ?, ?)
+                """, rows_to_insert)
+
                 conn.commit()
                 
-            print(f"PersistenceService: Mapping successfully saved to {save_path}.")
-            
+                print(f"PersistenceService: Save complete. {len(rows_to_insert)} sources saved.")
+
         except sqlite3.Error as e:
-            print(f"PersistenceService: SQLite Error! {e}. Rolling back.")
-            # The 'with' statement handles rollback automatically if commit() isn't reached
-            raise Exception(f"Failed to save to database: {e}")
+            print(f"CRITICAL: SQLite error during save: {e}")
+            # Clean up the (likely corrupt) file
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            raise Exception(f"Database error: {e}")
         except Exception as e:
-            print(f"PersistenceService: An unexpected error occurred during save: {e}")
-            raise
-
-    def _create_tables(self, cursor: sqlite3.Cursor):
-        """
-        (Re)creates the database schema.
-        This drops existing tables to ensure a fresh save.
-        """
-        cursor.execute("DROP TABLE IF EXISTS MapeamentoFontes")
-        cursor.execute("DROP TABLE IF EXISTS ConfiguracaoGeral")
-        
-        # Table for general key-value config
-        cursor.execute("""
-            CREATE TABLE ConfiguracaoGeral (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-        """)
-        
-        # Main table for all source mappings
-        cursor.execute("""
-            CREATE TABLE MapeamentoFontes (
-                id TEXT PRIMARY KEY,
-                path TEXT NOT NULL,
-                source_type TEXT NOT NULL,
-                parser_id TEXT,
-                element_id TEXT,
-                element_type TEXT,
-                CHECK (source_type IN ('GLOBAL', 'LOCAL'))
-            )
-        """)
-
-    def _save_config(self, cursor: sqlite3.Cursor, map_base_path: str):
-        """ Saves the general configuration data. """
-        cursor.execute(
-            "INSERT INTO ConfiguracaoGeral (key, value) VALUES (?, ?)",
-            ("map_base_path", map_base_path)
-        )
-
-    def _save_data_sources(self, cursor: sqlite3.Cursor, data_sources: List[DataSource]):
-        """ Saves all data source objects to the MapeamentoFontes table. """
-        
-        rows_to_insert = []
-        
-        for source in data_sources:
-            element_id: Optional[str] = None
-            element_type: Optional[str] = None
-            
-            # If it's local and has an association, extract its details
-            if source.is_local and source.association:
-                element_id = source.association.element_id
-                element_type = source.association.element_type.name # "NODE" or "EDGE"
-            
-            # Prepare the data tuple for insertion
-            data_tuple = (
-                source.id,
-                source.path,
-                source.source_type.name, # "GLOBAL" or "LOCAL"
-                source.parser_id,
-                element_id,
-                element_type
-            )
-            rows_to_insert.append(data_tuple)
-            
-        # Insert all rows at once using executemany for efficiency
-        if rows_to_insert:
-            cursor.executemany("""
-                INSERT INTO MapeamentoFontes 
-                (id, path, source_type, parser_id, element_id, element_type) 
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, rows_to_insert)
+            print(f"CRITICAL: Unknown error during save: {e}")
+            if os.path.exists(save_path):
+                os.remove(save_path)
+            raise Exception(f"Unknown error: {e}")

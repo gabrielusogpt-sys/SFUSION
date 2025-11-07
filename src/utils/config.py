@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,68 +19,84 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Utility class (Model/Service) responsible for loading and providing
-#    access to application settings from a .json configuration file.
+#    ConfigManager (Utility). Loads and manages the app settings.json.
 
 import json
 import os
-from typing import Dict, Any, Optional
+from typing import Any
 
 class ConfigManager:
     """
-    Manages loading and retrieving application settings from a JSON file.
+    Manages loading and accessing configuration from a JSON file.
     """
-
     def __init__(self, config_path: str):
         """
-        Initializes the configuration manager.
-
+        Initializes the manager with the path to the settings file.
+        
         Args:
-            config_path (str): The path to the settings.json file.
+            config_path (str): The absolute path to the settings.json file.
         """
-        if not os.path.isfile(config_path):
-            print(f"Warning: Config file not found at {config_path}. Using default values.")
-            self.config_path = None
-            self.config: Dict[str, Any] = {}
-        else:
-            self.config_path = config_path
-            self.config = {}
-            print(f"ConfigManager: Initialized for file: {self.config_path}")
+        self.config_path = config_path
+        self._config_data = {}
+        # FIX: Changed "file" to "path" for consistency
+        print(f"ConfigManager: Initialized for path: {self.config_path}")
 
     def load_config(self):
         """
-        Loads (or re-loads) the configuration file from disk.
-        If the file is missing or corrupt, the config remains empty.
+        Loads the configuration file from disk into memory.
         """
-        if not self.config_path:
-            return # No config file was found during init
+        if not os.path.exists(self.config_path):
+            print(f"Warning: Config file not found at {self.config_path}. Using defaults.")
+            self._config_data = {}
+            return
 
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                self.config = json.load(f)
-            print(f"ConfigManager: Successfully loaded settings from {self.config_path}.")
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                self._config_data = json.load(f)
+            # FIX: Changed print message to be more consistent
+            print(f"ConfigManager: Configuration loaded from {self.config_path}")
         except json.JSONDecodeError as e:
-            print(f"Error: Failed to parse JSON from config file {self.config_path}: {e}")
-            self.config = {} # Reset to empty on failure
-        except FileNotFoundError:
-            print(f"Error: Config file {self.config_path} disappeared.")
-            self.config = {} # Reset to empty on failure
+            # FIX: Added robust error logging
+            print(f"CRITICAL: Failed to parse {self.config_path}: {e}. Using defaults.")
+            self._config_data = {}
         except Exception as e:
-            print(f"Error: An unexpected error occurred loading config: {e}")
-            self.config = {}
+            # FIX: Added robust error logging
+            print(f"CRITICAL: Failed to read {self.config_path}: {e}. Using defaults.")
+            self._config_data = {}
+            # --- END FIX ---
 
-    def get(self, key: str, default: Optional[Any] = None) -> Any:
+    def get(self, key: str, default: Any = None) -> Any:
         """
-        Gets a configuration value for a given key.
-
+        Gets a configuration value by key.
+        
         Args:
-            key (str): The key to retrieve (e.g., "default_language").
-            default (Optional[Any]): The value to return if the key
-                                     is not found. Defaults to None.
-
+            key (str): The configuration key (e.g., "default_language").
+            default (Any, optional): Value to return if key is not found.
+        
         Returns:
-            Any: The configuration value, or the default value.
+            Any: The configuration value or the default.
         """
-        # We can add logic for nested keys (e.g., "database.host") later
-        # For now, we assume a flat structure.
-        return self.config.get(key, default)
+        return self._config_data.get(key, default)
+
+    def set(self, key: str, value: Any):
+        """
+        Sets a configuration value in memory.
+        Note: This does not automatically save to disk.
+        """
+        self._config_data[key] = value
+
+    def save_config(self):
+        """
+        Saves the current in-memory configuration back to the .json file.
+        """
+        try:
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+            
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self._config_data, f, indent=4)
+            print(f"ConfigManager: Configuration saved to {self.config_path}")
+        except Exception as e:
+            # FIX: Added robust error logging
+            print(f"CRITICAL: Failed to write config to {self.config_path}: {e}")
+            # --- END FIX ---

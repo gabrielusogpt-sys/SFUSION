@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,118 +19,106 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Service class (Model) responsible for analyzing data source files
-#    (CSV, JSON, Excel) using Pandas. This service is used to validate
-#    data sources and extract metadata (e.g., columns).
+#    Data Importer (Service). Analyzes data source folders (Model logic).
+#    It is completely independent of Qt/UI.
 
 import os
-from pathlib import Path
-from typing import Optional, Dict, List, Any
+import glob
 import pandas as pd
+from typing import Dict, Any, List
 
 class DataImporter:
     """
-    Analyzes data source folders using Pandas.
+    Service class responsible for analyzing data source folders.
     
-    This service scans a folder for a sample file, attempts to read it,
-    and returns metadata about its structure (e.g., file type, columns).
-    It does not read the entire dataset.
+    It finds a sample file (CSV, JSON, Excel) and validates it
+    by reading the first few rows to extract column headers.
     """
-
-    # Supported file extensions, mapped to their 'type' (and pandas reader)
-    SUPPORTED_EXTENSIONS = {
-        ".csv": "csv",
-        ".json": "json",
-        ".xlsx": "excel",
-        ".xls": "excel",
+    
+    SUPPORTED_TYPES = {
+        "*.csv": "csv",
+        "*.json": "json",
+        "*.xlsx": "excel",
+        "*.xls": "excel"
     }
+    
+    SAMPLE_ROWS = 5 # Number of rows to read for analysis
 
     def __init__(self):
-        """
-        Initializes the DataImporter.
-        """
-        print("DataImporter: Initialized.")
+        pass
 
     def analyze_folder(self, folder_path: str) -> Dict[str, Any]:
         """
-        Analyzes a folder, finds a sample file, and reads its header.
+        Analyzes a folder to find a valid sample data file.
         
         Args:
             folder_path (str): The absolute path to the data source folder.
             
         Returns:
-            Dict[str, Any]: A dictionary containing metadata, e.g.,
-                            {
-                                "sample_file": "path/to/sample.csv",
-                                "file_type": "csv",
-                                "columns": ["col1", "col2", "col3"]
-                            }
-            
+            Dict[str, Any]: A dictionary containing 'file_type', 'sample_file',
+                            'columns', and 'sample_data'.
+                            
         Raises:
-            FileNotFoundError: If the folder is empty or contains no supported files.
-            pd.errors.ParserError: If the sample file is malformed.
-            Exception: For other unexpected errors.
+            Exception: If no valid files are found or pandas fails to read.
         """
-        print(f"DataImporter: Analyzing folder: {folder_path}")
+        print(f"DataImporter: Analyzing {folder_path}...")
         
-        sample_file_path, file_type = self._find_sample_file(folder_path)
+        sample_file_path = None
+        file_type = None
+
+        # 1. Find the first supported file
+        for pattern, type_id in self.SUPPORTED_TYPES.items():
+            search_path = os.path.join(folder_path, pattern)
+            files = glob.glob(search_path)
+            if files:
+                sample_file_path = files[0] # Grab the first match
+                file_type = type_id
+                break
         
         if not sample_file_path:
-            raise FileNotFoundError(f"No supported data files (.csv, .json, .xlsx, .xls) found in {folder_path}")
+            raise Exception(f"No supported data files (.csv, .json, .xlsx, .xls) found in folder.")
 
-        print(f"DataImporter: Found sample file: {sample_file_path} (Type: {file_type})")
+        print(f"DataImporter: Found sample file {sample_file_path} (type: {file_type}).")
 
+        # 2. Read the sample file using Pandas
         try:
-            # Read only the first 5 rows to get the header
-            if file_type == "csv":
-                df = pd.read_csv(sample_file_path, nrows=5)
-            elif file_type == "json":
-                # Try to read as lines=True, common for log data
-                try:
-                    df = pd.read_json(sample_file_path, lines=True, nrows=5)
-                except ValueError:
-                    # Fallback to standard JSON
-                    df = pd.read_json(sample_file_path, nrows=5)
-            elif file_type == "excel":
-                df = pd.read_excel(sample_file_path, nrows=5)
-            else:
-                # This should not be reachable due to _find_sample_file check
-                raise ValueError(f"Internal error: Unsupported file type '{file_type}'")
-
-            if df.empty:
-                raise ValueError(f"Sample file '{sample_file_path}' is empty.")
-
+            df = self._read_sample(sample_file_path, file_type)
+            
             columns = list(df.columns)
-            print(f"DataImporter: Analysis successful. Columns found: {columns}")
+            sample_data = df.to_dict(orient='records')
+            
+            print(f"DataImporter: Analysis complete. Columns: {columns}")
             
             return {
-                "sample_file": str(sample_file_path),
                 "file_type": file_type,
+                "sample_file": os.path.basename(sample_file_path),
                 "columns": columns,
+                "sample_data": sample_data
             }
             
-        except pd.errors.ParserError as e:
-            print(f"DataImporter: Error! Pandas could not parse file: {e}")
-            raise Exception(f"Failed to parse sample file: {e}")
-        except FileNotFoundError as e:
-            print(f"DataImporter: Error! File not found: {e}")
-            raise  # Re-raise
         except Exception as e:
-            print(f"DataImporter: Error! An unexpected error occurred reading file: {e}")
-            raise Exception(f"An error occurred reading {sample_file_path}: {e}")
+            print(f"CRITICAL: Pandas failed to read {sample_file_path}. {e}")
+            raise Exception(f"File is invalid or corrupt: {e}")
 
-    def _find_sample_file(self, folder_path: str) -> Optional[tuple[Path, str]]:
+    def _read_sample(self, file_path: str, file_type: str) -> pd.DataFrame:
         """
-        Scans a directory and returns the path to the *first*
-        supported data file it finds.
+        Internal helper to read the first N rows of a file using pandas.
         """
-        try:
-            for entry in os.scandir(folder_path):
-                if entry.is_file():
-                    ext = Path(entry.name).suffix.lower()
-                    if ext in self.SUPPORTED_EXTENSIONS:
-                        file_type = self.SUPPORTED_EXTENSIONS[ext]
-                        return Path(entry.path), file_type
-            return None, None
-        except FileNotFoundError:
-            return None, None
+        if file_type == "csv":
+            return pd.read_csv(file_path, nrows=self.SAMPLE_ROWS)
+        elif file_type == "excel":
+            return pd.read_excel(file_path, nrows=self.SAMPLE_ROWS)
+        elif file_type == "json":
+            # read_json doesn't support 'nrows' directly for all orientations.
+            # We must read the whole file if it's a record array.
+            # For simplicity in this tool, we assume 'orient=records'
+            # and just read the first N lines if it's line-delimited.
+            try:
+                # Try line-delimited JSON
+                return pd.read_json(file_path, lines=True, nrows=self.SAMPLE_ROWS)
+            except ValueError:
+                # Try regular JSON array
+                df = pd.read_json(file_path)
+                return df.head(self.SAMPLE_ROWS)
+        else:
+            raise Exception(f"Unsupported file type '{file_type}' for reading.")

@@ -1,31 +1,41 @@
 {
-  "main_window": {
-    "window_title": "SFusion Mapper"
-  },
-  "toolbar": {
-    "main": "Barra de Ferramentas Principal",
-    "open_map": "Abrir Mapa",
-    "open_map_tooltip": "Abrir um arquivo de mapa SUMO .net.xml",
-    "add_source": "Adicionar Fonte de Dados",
-    "add_source_tooltip": "Adicionar uma pasta contendo arquivos de dados",
-    "save_map": "Salvar Mapeamento",
-    "save_map_tooltip": "Salvar a configuração de mapeamento em um arquivo .db"
-  },
-  "sources_panel": {
-    "list_title": "Fontes de Dados",
-    "details_title": "Detalhes da Fonte",
-    "type_label": "Tipo:",
-    "type_global": "Global",
-    "type_local": "Local",
-    "associate_button": "Associar ao Mapa",
-    "status_label": "Estado:",
-    "status_not_associated": "Não associado."
-  },
-  "status_bar": {
-    "ready": "Pronto.",
-    "controller_connected": "Pronto (Controlador conectado).",
-    "action_open_map": "Ação: 'Abrir Mapa' acionada (lógica não implementada).",
-    "action_add_source": "Ação: 'Adicionar Fonte' acionada (lógica não implementada).",
-    "action_save_map": "Ação: 'Salvar Mapa' acionado (lógica não implementada)."
-  }
+    "main_window.window_title": "SFusion Mapper (AGPL-3.0) - Noxfort Labs",
+
+    "toolbar.main": "Barra de Ferramentas Principal",
+    "toolbar.open_map": "Abrir Mapa",
+    "toolbar.open_map_tooltip": "Abrir um ficheiro de rede SUMO (.net.xml)",
+    "toolbar.add_source": "Adicionar Fonte",
+    "toolbar.add_source_tooltip": "Adicionar uma pasta de fonte de dados",
+    "toolbar.save_map": "Salvar Mapeamento",
+    "toolbar.save_map_tooltip": "Salvar o mapeamento atual num ficheiro .db",
+
+    "status_bar.ready": "Pronto.",
+    "status_bar.map_loaded": "Mapa carregado com sucesso: {path}",
+    "status_bar.source_added": "Fonte adicionada: {path}",
+    "status_bar.save_no_map_error": "Erro: É preciso carregar um mapa antes de salvar.",
+    "status_bar.save_success": "Mapeamento salvo com sucesso: {path}",
+
+    "dialog.open_map.title": "Abrir Ficheiro de Mapa",
+    "dialog.open_map.filter": "Ficheiros de Rede SUMO (*.net.xml);;Todos os Ficheiros (*)",
+    "dialog.add_source.title": "Selecionar Pasta da Fonte de Dados",
+    "dialog.save_map.title": "Salvar Ficheiro de Mapeamento",
+    "dialog.save_map.filter": "Base de Dados SQLite (*.db);;Todos os Ficheiros (*)",
+
+    "map_view.context_menu.title": "Ações do Mapa",
+    "map_view.context_menu.fit_zoom": "Ajustar Zoom ao Mapa",
+    "map_view.context_menu.clear_selection": "Limpar Seleção",
+
+    "sources_panel.group_title.list": "Fontes de Dados",
+    "sources_panel.group_title.details": "Detalhes da Fonte",
+    "sources_panel.label.id": "ID:",
+    "sources_panel.label.path": "Caminho:",
+    "sources_panel.label.type": "Tipo:",
+    "sources_panel.radio.global": "Global (Mapa Inteiro)",
+    "sources_panel.radio.local": "Local (Nó Específico)",
+    "sources_panel.button.associate": "Associar ao Mapa...",
+    "sources_panel.label.status": "Estado:",
+    "sources_panel.status.unassociated": "Não Associada",
+    "sources_panel.status.associated_global": "Associada (Global)",
+    "sources_panel.status.associated_node": "Associada: Nó {node_id}",
+    "sources_panel.status.selecting_node": "Clique num nó do mapa para associar..."
 }
