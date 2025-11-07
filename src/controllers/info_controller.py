@@ -2,124 +2,135 @@
 #
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Este programa é software livre: pode redistribuí-lo e/ou modificá-lo
+# sob os termos da Licença Pública Geral Affero GNU como publicada pela
+# Free Software Foundation, quer a versão 3 da Licença, ou
+# (à sua opção) qualquer versão posterior.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# Este programa é distribuído na esperança de que seja útil,
+# mas SEM QUALQUER GARANTIA; sem mesmo a garantia implícita de
+# COMERCIALIZAÇÃO ou ADEQUAÇÃO A UM PROPÓSITO ESPECÍFICO. Veja a
+# Licença Pública Geral Affero GNU para mais detalhes.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Deveria ter recebido uma cópia da Licença Pública Geral Affero GNU
+# junto com este programa. Se não, veja <https://www.gnu.org/licenses/>.
 
 # File: src/controllers/info_controller.py
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Info Panel specialist (Controller). Connects the InfoPanel (View)
-#    signals to the application logic (Model).
+#    InfoController (Controller). O "cérebro" para o EditorPanel.
+#    (Refatorado para usar o EditorPanel fixo em vez do InfoPanel flutuante)
 
+import logging
 from PySide6.QtCore import QObject, Slot
 
-# Import the View this controller manages
-from ui.map.info_panel import InfoPanel
-
-# Import Model components
 from src.domain.app_state import AppState
 from src.domain.entities import MapNode, MapEdge
+from src.utils.i18n import I18nManager
+
+# 1. Alterar a importação da View
+from ui.editor.editor_panel import EditorPanel
+
 
 class InfoController(QObject):
     """
-    Controller for the Map Info Panel. (Req 3)
-    Handles showing/hiding the panel and saving "real name" data.
+    Controlador para o EditorPanel.
+    
+    Responsabilidade:
+    - Ouvir os sinais do EditorPanel (View).
+    - Atualizar o AppState (Model) quando 'Salvar' é clicado.
+    - Orquestrar a exibição/ocultação do painel (agora fixo à esquerda).
     """
-    def __init__(self, view: InfoPanel, app_state: AppState, parent=None):
+    
+    def __init__(
+        self,
+        app_state: AppState,
+        view: EditorPanel,  # 2. Alterar o type hint (de InfoPanel para EditorPanel)
+        i18n: I18nManager
+    ):
         """
-        Controller constructor.
+        Inicializa o controlador.
         
-        Args:
-            view (InfoPanel): The view instance for the info panel.
-            app_state (AppState): The shared application state (Model).
+        :param app_state: A "Fonte Única da Verdade".
+        :param view: A View (EditorPanel) que este controlador gere.
+        :param i18n: O gestor de internacionalização.
         """
-        super().__init__(parent)
+        super().__init__() 
         
-        self.view = view
-        self.app_state = app_state
-        self._current_item_type: str | None = None # "node" or "edge"
+        self._app_state = app_state
+        self._view = view
+        self._i18n = i18n
         
-        self._connect_signals()
-        print("InfoController: Initialized.")
+        self._current_element = None # Armazena o Nó ou Aresta atual
 
-    def _connect_signals(self):
-        """ Connects view signals to controller slots. """
-        self.view.saveClicked.connect(self._on_save)
-        self.view.closeClicked.connect(self._on_close)
-        
-    # --- Public API (Called by MapController) ---
+    def setup_connections(self):
+        """Conecta os sinais da View aos slots deste controlador."""
+        # (Esta lógica é idêntica, pois o EditorPanel emite os mesmos sinais)
+        self._view.save_clicked.connect(self._on_save)
+        self._view.close_clicked.connect(self.hide_panel)
 
-    def show_for_node(self, node_id: str):
-        """
-        Commands the InfoPanel to show data for a specific node.
-        """
-        node = self.app_state.get_node_by_id(node_id)
-        if node:
-            self._current_item_type = "node"
-            self.view.show_for_item(node.id, node.real_name, "Node")
-        else:
-            print(f"InfoController: Error: Node {node_id} not found in AppState.")
+    # --- Métodos Públicos (Chamados pelo MapController) ---
 
-    def show_for_edge(self, edge_id: str):
-        """
-        Commands the InfoPanel to show data for a specific edge.
-        """
-        # NOTE: self.app_state.get_edge_by_id does not exist yet.
-        # We must add it to src/domain/app_state.py next.
-        edge = self.app_state.get_edge_by_id(edge_id)
+    @Slot(MapNode)
+    def show_for_node(self, node: MapNode):
+        """Exibe o painel com os dados de um Nó."""
+        self._current_element = node
+        t = self._i18n.t
         
-        if edge:
-            self._current_item_type = "edge"
-            self.view.show_for_item(edge.id, edge.real_name, "Edge")
-        else:
-            print(f"InfoController: Error: Edge {edge_id} not found in AppState.")
-            
-    def hide_panel(self):
-        """ Commands the InfoPanel to hide. """
-        self.view.hide_panel()
-        self._current_item_type = None
+        self._view.show_data(
+            title=t("info_panel.title_node"), # Título
+            sumo_id=node.id,
+            real_name=node.real_name
+        )
+        
+        # 3. Adicionar chamada explícita para mostrar o painel
+        self._view.show()
+        self._view.raise_()
 
-    # --- Slots (Called by View) ---
-
-    @Slot(str, str)
-    def _on_save(self, item_id: str, new_real_name: str):
-        """
-        Slot triggered when the view's 'Save' button is clicked.
-        Updates the Model (AppState).
-        """
-        print(f"InfoController: Saving '{new_real_name}' for {self._current_item_type} {item_id}")
+    @Slot(MapEdge)
+    def show_for_edge(self, edge: MapEdge):
+        """Exibe o painel com os dados de uma Aresta."""
+        self._current_element = edge
+        t = self._i18n.t
         
-        # Ensure the name is saved as None if the string is empty
-        saved_name = new_real_name if new_real_name.strip() else None
+        self._view.show_data(
+            title=t("info_panel.title_edge"), # Título
+            sumo_id=edge.id,
+            real_name=edge.real_name
+        )
         
-        item = None
-        if self._current_item_type == "node":
-            item = self.app_state.get_node_by_id(item_id)
-        elif self._current_item_type == "edge":
-            item = self.app_state.get_edge_by_id(item_id)
-        
-        if item:
-            item.real_name = saved_name
-            print(f"InfoController: Model (AppState) updated for {item_id}.")
-        else:
-            print(f"InfoController: Error: Could not find item {item_id} to save.")
-        
-        self.hide_panel()
+        # 3. Adicionar chamada explícita para mostrar o painel
+        self._view.show()
+        self._view.raise_()
 
     @Slot()
-    def _on_close(self):
+    def hide_panel(self):
+        """Esconde o painel e limpa o elemento atual."""
+        self._current_element = None
+        self._view.hide()
+
+    # --- Slots Privados (Ouvem a View) ---
+
+    @Slot(str)
+    def _on_save(self, new_real_name: str):
         """
-        Slot triggered when the view's 'Close' button is clicked.
+        Chamado quando o botão 'Salvar' na View é clicado.
+        Atualiza o Modelo (AppState).
         """
-        self.hide_panel()
+        if self._current_element:
+            logging.info(f"InfoController: Salvando '{new_real_name}' para o ID {self._current_element.id}")
+            
+            # Atualiza o modelo (AppState)
+            self._app_state.update_element_real_name(
+                self._current_element.id, 
+                new_real_name
+            )
+            
+            # (Opcional: Adicionar feedback na status bar)
+            
+            # Esconde o painel após salvar
+            self.hide_panel()
+        
+        else:
+            logging.warning("InfoController: 'Salvar' clicado, mas nenhum elemento estava selecionado.")

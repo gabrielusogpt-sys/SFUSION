@@ -1,183 +1,111 @@
-# SFusion (SYNAPSE Fusion) Mapper
-#
-# Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import logging
+from PySide6.QtGui import QPen, QBrush, QColor
+from PySide6.QtCore import Qt
 
-# File: src/core/map_renderer.py
-# Author: Gabriel Moraes
-# Date: November 2025
-# Description:
-#    Map Renderer (SRP Refactor).
-#    Handles the "Rendering" responsibility: drawing items, styling,
-#    and highlighting. It is the "Painter" commanded by the MapController.
-
-from PySide6.QtCore import QObject
-from PySide6.QtGui import QPen, QBrush, QColor, QPainterPath
-from PySide6.QtWidgets import QGraphicsEllipseItem, QGraphicsPathItem
-
-# Import the View
 from ui.map.map_view import MapView
-
-# Import Model components
 from src.domain.app_state import AppState
-from src.domain.entities import MapEdge
+from src.utils.config import ConfigManager
 
 
-class MapRenderer(QObject):
+class MapRenderer:
     """
-    Handles all rendering logic for the MapView.
-    This is the "Painter" half of the original MapController.
+    Responsabilidade única: Desenhar o mapa (Nós e Arestas)
+    na MapView (QGraphicsScene).
+    (Refatorado do MapController)
     """
-    
-    # --- Constants for map styling ---
-    NODE_RADIUS = 5
-    NODE_BRUSH = QBrush(QColor("#3498db")) # Blue
-    NODE_PEN = QPen(QColor("#2980b9"), 1.5) # Darker Blue
-    
-    # --- FIX (Problem 1): Make streets thicker ---
-    EDGE_PEN = QPen(QColor("#95a5a6"), 4) # Gray, Width 4
-    # --- END FIX ---
-    
-    NODE_HIGHLIGHT_BRUSH = QBrush(QColor("#e74c3c")) # Red
-    NODE_HIGHLIGHT_PEN = QPen(QColor("#c0392b"), 2) # Darker Red
-    # --- End Constants ---
-    
-    
-    def __init__(self, view: MapView, app_state: AppState, parent=None):
-        """
-        Renderer constructor.
+
+    def __init__(
+        self,
+        map_view: MapView,
+        app_state: AppState,
+        config: ConfigManager,
+    ):
+        self._view = map_view
         
-        Args:
-            view (MapView): The view instance for the map.
-            app_state (AppState): The shared application state (Model).
-        """
-        super().__init__(parent)
+        # --- CORREÇÃO PRINCIPAL AQUI ---
+        # A 'scene' na MapView é um atributo (self.scene), não um método (self.scene()).
+        # Removemos os parênteses ()
+        self._scene = map_view.scene 
+        # --- FIM DA CORREÇÃO ---
+
+        self._app_state = app_state
+
+        # Configurações de renderização
+        self._zoom_config = config.get("map_zoom", {})
+        self._min_zoom = self._zoom_config.get("min", 0.1)
+        self._max_zoom = self._zoom_config.get("max", 10.0)
+
+        self._colors = config.get("map_colors", {})
+        self._edge_color = QColor(self._colors.get("edge", "#000000"))
+        self._node_color = QColor(self._colors.get("node", "#FF0000"))
+        self._internal_node_color = QColor(
+            self._colors.get("internal_node", "#AAAAAA")
+        )
         
-        self.view = view
-        self.app_state = app_state
-        
-        self._node_items = {} # Cache: {node_id: QGraphicsEllipseItem}
-        print("MapRenderer: Initialized.")
+        # Cor de fundo da cena (lida do config)
+        bg_color = self._colors.get("background", "#FFFFFF")
+        self._scene.setBackgroundBrush(QColor(bg_color))
+
+        self._pens = {
+            "edge": QPen(self._edge_color, 4, Qt.SolidLine),
+            "node": QPen(self._node_color, 1, Qt.SolidLine),
+            "internal_node": QPen(self._internal_node_color, 1, Qt.SolidLine),
+        }
+        self._brushes = {
+            "node": QBrush(self._node_color),
+            "internal_node": QBrush(self._internal_node_color),
+        }
 
     def draw_map(self):
-        """
-        Reads the map data from the AppState (Model) and commands the
-        MapView (View) to render it.
-        """
-        print("MapRenderer: Reading map data from AppState...")
-        map_data = self.app_state.get_map_data()
-        if not map_data:
-            print("MapRenderer: No map data found.")
+        """Lê os dados do AppState e desenha o mapa na cena."""
+        logging.info("MapRenderer: Reading map data from AppState...")
+        self._scene.clear()
+        nodes = self._app_state.get_all_nodes()
+        edges = self._app_state.get_all_edges()
+
+        if not nodes and not edges:
+            logging.warning("MapRenderer: No map data to draw.")
             return
 
-        nodes = map_data.get("nodes", [])
-        edges = map_data.get("edges", [])
-
-        # --- 1. Clear old map ---
-        self.view.clear_scene()
-        self._node_items.clear()
-        
-        # --- 2. Draw Edges (Lines) ---
-        # Edges are drawn first so they appear "under" the nodes
+        # 1. Desenhar Arestas (Ruas)
         for edge in edges:
-            path = self._create_edge_path(edge)
-            path_item = QGraphicsPathItem(path)
-            path_item.setPen(self.EDGE_PEN)
-            
-            # --- FIX (Req 3): Store the edge ID on the item ---
-            # We use key 1 for edges (key 0 is for nodes)
-            path_item.setData(1, edge.id)
-            # --- END FIX ---
-            
-            self.view.add_item_to_scene(path_item)
+            self._draw_edge(edge)
 
-        # --- 3. Draw Nodes (Circles) ---
-        r = self.NODE_RADIUS # Alias for radius
+        # 2. Desenhar Nós (Interseções)
+        node_count = 0
         for node in nodes:
-        
-            # --- FIX (Problem 2): Filter "internal" nodes ---
-            # Do not draw the internal geometry nodes, only "real" junctions.
+            # Filtrar e não desenhar nós do tipo "internal"
             if node.node_type == "internal":
                 continue
-            # --- END FIX ---
-
-            # Create a QGraphicsEllipseItem
-            # (x, y, width, height)
-            node_item = QGraphicsEllipseItem(node.x - r, node.y - r, r*2, r*2)
-            
-            # Store the node ID inside the item for later retrieval
-            node_item.setData(0, node.id)
-            
-            node_item.setBrush(self.NODE_BRUSH)
-            node_item.setPen(self.NODE_PEN)
-            node_item.setZValue(1) # Ensure nodes are drawn on top of edges
-            
-            # Add to scene
-            self.view.add_item_to_scene(node_item)
-            
-            # Add to cache for highlighting
-            self._node_items[node.id] = node_item
-            
-        print(f"MapRenderer: Map drawn. {len(nodes)} nodes, {len(edges)} edges.")
+            self._draw_node(node)
+            node_count += 1
         
-        # --- 4. Fit zoom ---
-        # Note: The controller is responsible for the *decision*
-        # to fit zoom. We just draw.
-        self.view.fit_to_scene()
+        logging.info(f"MapRenderer: Map drawn. {node_count} nodes, {len(edges)} edges.")
 
-    def _create_edge_path(self, edge: MapEdge) -> QPainterPath:
-        """
-        Creates a QPainterPath (a line or curve) from an edge's shape.
-        """
-        path = QPainterPath()
+        # Ajustar a vista para caber o mapa
+        self._view.fit_map_in_view()
+        self._view.set_zoom_limits(self._min_zoom, self._max_zoom)
+
+
+    def _draw_edge(self, edge):
+        """Desenha uma única aresta (rua) na cena."""
+        pen = self._pens["edge"]
+        for i in range(len(edge.shape) - 1):
+            p1 = edge.shape[i]
+            p2 = edge.shape[i + 1]
+            line = self._scene.addLine(p1[0], -p1[1], p2[0], -p2[1], pen)
+            line.setData(0, "edge")  # Identificador de tipo
+            line.setData(1, edge.id) # ID do elemento
+            line.setZValue(0)  # Arestas ficam no fundo
+
+    def _draw_node(self, node):
+        """Desenha um único nó (interseção) na cena."""
+        pen = self._pens["node"]
+        brush = self._brushes["node"]
         
-        if not edge.shape:
-            # If no shape, draw a straight line between nodes
-            start_node = self.app_state.get_node_by_id(edge.from_node)
-            end_node = self.app_state.get_node_by_id(edge.to_node)
-            if start_node and end_node:
-                path.moveTo(start_node.x, start_node.y)
-                path.lineTo(end_node.x, end_node.y)
-        else:
-            # If shape is defined (list of (x,y) tuples), use it
-            start_point = edge.shape[0]
-            path.moveTo(start_point[0], start_point[1])
-            for point in edge.shape[1:]:
-                path.lineTo(point[0], point[1])
-                
-        return path
-
-    def highlight_node(self, node_id: str | None):
-        """
-        Highlights a specific node and de-highlights all others.
-        
-        Args:
-            node_id (str | None): The ID of the node to highlight.
-                                  If None, clears all highlights.
-        """
-        # 1. De-highlight all nodes
-        for item in self._node_items.values():
-            item.setBrush(self.NODE_BRUSH)
-            item.setPen(self.NODE_PEN)
-            
-        # 2. Highlight the specific node
-        if node_id and node_id in self._node_items:
-            item = self._node_items[node_id]
-            item.setBrush(self.NODE_HIGHLIGHT_BRUSH)
-            item.setPen(self.NODE_HIGHLIGHT_PEN)
-
-    def clear_selection_highlight(self):
-        """ Resets all nodes to their default appearance. """
-        self.highlight_node(None)
+        r = 5  # Raio do nó
+        ellipse = self._scene.addEllipse(-r, -r, 2 * r, 2 * r, pen, brush)
+        ellipse.setPos(node.x, -node.y)
+        ellipse.setData(0, "node")  # Identificador de tipo
+        ellipse.setData(1, node.id) # ID do elemento
+        ellipse.setZValue(1)  # Nós ficam por cima das arestas

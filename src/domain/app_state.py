@@ -19,123 +19,128 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    AppState (Model). The "Single Source of Truth" for the application.
-#    It holds the map data and source list in memory.
-#    It is completely independent of Qt/UI.
+#    AppState (Model). A "Fonte Única da Verdade" (Single Source of Truth)
+#    para o estado da aplicação.
 
-from typing import Dict, List, Any, Iterable
-
-# FIX: Changed import to be absolute from the project root (src.)
-# FIX (Req 3): Import MapEdge as well
-from src.domain.entities import DataSource, MapNode, MapEdge
-# --- END FIX ---
+import logging
+from PySide6.QtCore import QObject, Signal # <-- 1. Importar QObject e Signal
+from .entities import MapNode, MapEdge, DataSource
 
 
-class AppState:
+# 2. Fazer AppState herdar de QObject
+class AppState(QObject):
     """
-    Holds the application's in-memory state.
-    This is the "Single Source of Truth" (Model).
+    Armazena o estado atual da aplicação na memória.
+    Atua como a "Fonte Única da Verdade".
+    Emite sinais quando os dados são alterados.
     """
+    
+    # --- 3. Definir os sinais que os Controladores irão ouvir ---
+    
+    # Sinal emitido quando novos dados de mapa (nós/arestas) são carregados
+    map_data_loaded = Signal()
+    
+    # Sinal emitido quando a lista de fontes de dados muda (adicionada/removida)
+    # Emite a lista [list(DataSource)]
+    data_sources_changed = Signal(list) 
+    
+    # Sinal emitido quando a associação de uma fonte muda
+    # Emite (source_id: str, association_type: str)
+    data_association_changed = Signal(str, str)
+
+
+    # 4. Adicionar o __init__ e chamar super()
     def __init__(self):
-        # The list of all loaded data sources
-        self._sources: Dict[str, DataSource] = {}
+        super().__init__()
         
-        # The parsed map data
-        self._map_data: Dict[str, Any] = {}
-        self._map_file_path: str | None = None
+        # Dados do Mapa
+        self._nodes: list[MapNode] = []
+        self._edges: list[MapEdge] = []
         
-        # Cache for quick node lookups
-        self._nodes_by_id: Dict[str, MapNode] = {}
-        
-        # --- FIX (Req 3): Add cache for quick edge lookups ---
-        self._edges_by_id: Dict[str, MapEdge] = {}
-        # --- END FIX ---
+        # Caches para acesso rápido (ex: cliques)
+        self._nodes_by_id: dict[str, MapNode] = {}
+        self._edges_by_id: dict[str, MapEdge] = {}
 
-    # --- Map Data Methods ---
-
-    def set_map_data(self, map_data: Dict[str, Any], file_path: str):
-        """
-        Sets the loaded map data, replacing any existing data.
+        # Dados das Fontes
+        self._data_sources: list[DataSource] = []
+        self._sources_by_path: dict[str, DataSource] = {}
         
-        Args:
-            map_data (Dict): The dictionary from MapImporter
-                             (containing 'nodes' and 'edges').
-            file_path (str): The path to the .net.xml file.
-        """
-        self._map_data = map_data
-        self._map_file_path = file_path
+        # Estado da UI
+        self._selected_source_path: str | None = None
+
+    # --- Métodos de Mapa ---
+
+    def set_map_data(self, nodes: list[MapNode], edges: list[MapEdge]):
+        """Define (ou limpa) os dados do mapa."""
+        self._nodes = nodes
+        self._edges = edges
         
-        # Clear existing data sources, as they are map-specific
-        self.clear_all_sources()
+        # Recria os caches
+        self._nodes_by_id = {node.id: node for node in nodes}
+        self._edges_by_id = {edge.id: edge for edge in edges}
         
-        # Build the node cache
-        self._nodes_by_id.clear()
-        for node in map_data.get("nodes", []):
-            self._nodes_by_id[node.id] = node
-            
-        print(f"AppState: Map data set. {len(self._nodes_by_id)} nodes cached.")
-
-        # --- FIX (Req 3): Build the edge cache ---
-        self._edges_by_id.clear()
-        for edge in map_data.get("edges", []):
-            self._edges_by_id[edge.id] = edge
-        print(f"AppState: {len(self._edges_by_id)} edges cached.")
-        # --- END FIX ---
-
-
-    def get_map_data(self) -> Dict[str, Any]:
-        """ Returns the full map data dictionary. """
-        return self._map_data
-
-    def get_map_file_path(self) -> str | None:
-        """ Returns the path to the loaded .net.xml file. """
-        return self._map_file_path
+        logging.info(f"AppState: Dados do mapa atualizados. {len(nodes)} nós, {len(edges)} arestas.")
         
+        # 5. Emitir o sinal que o MapController estava à espera
+        self.map_data_loaded.emit()
+
+    def get_all_nodes(self) -> list[MapNode]:
+        return self._nodes
+
+    def get_all_edges(self) -> list[MapEdge]:
+        return self._edges
+
     def get_node_by_id(self, node_id: str) -> MapNode | None:
-        """
-        Gets a single MapNode from the cache by its ID.
-        """
         return self._nodes_by_id.get(node_id)
 
-    # --- FIX (Req 3): Add method to get edge by ID ---
     def get_edge_by_id(self, edge_id: str) -> MapEdge | None:
-        """
-        Gets a single MapEdge from the cache by its ID.
-        """
         return self._edges_by_id.get(edge_id)
-    # --- END FIX ---
 
-    # --- Data Source Methods ---
-
-    def add_source(self, source: DataSource):
-        """
-        Adds a new data source to the state.
+    def update_element_real_name(self, element_id: str, real_name: str):
+        """Atualiza o 'real_name' de um nó ou aresta."""
+        element = self.get_node_by_id(element_id) or self.get_edge_by_id(element_id)
         
-        Args:
-            source (DataSource): The new DataSource entity to add.
-        """
-        if source.id in self._sources:
-            print(f"Warning: Source with ID {source.id} already exists. Overwriting.")
+        if element:
+            # Garante que None é salvo se o texto estiver vazio
+            element.real_name = real_name if real_name else None
+            logging.info(f"AppState: 'real_name' atualizado para '{element_id}'")
+        else:
+            logging.warning(f"AppState: Tentativa de atualizar nome de elemento desconhecido: '{element_id}'")
+
+    # --- Métodos de Fonte de Dados ---
+
+    def add_data_source(self, source: DataSource):
+        """Adiciona uma nova fonte de dados."""
+        if source.path in self._sources_by_path:
+            logging.warning(f"AppState: Fonte de dados '{source.path}' já existe.")
+            return
+            
+        self._data_sources.append(source)
+        self._sources_by_path[source.path] = source
         
-        self._sources[source.id] = source
-        print(f"AppState: Source '{source.id}' added.")
+        # Emite o sinal com a *nova lista completa*
+        self.data_sources_changed.emit(self._data_sources)
 
-    def get_source_by_id(self, source_id: str) -> DataSource | None:
-        """
-        Gets a single data source by its unique ID.
-        """
-        return self._sources.get(source_id)
+    def get_all_data_sources(self) -> list[DataSource]:
+        return self._data_sources
 
-    def get_all_sources(self) -> Iterable[DataSource]:
-        """
-        Returns an iterable of all loaded DataSource entities.
-        """
-        return self._sources.values()
+    def get_data_source_by_id(self, source_id: str) -> DataSource | None:
+        return self._sources_by_path.get(source_id)
 
-    def clear_all_sources(self):
-        """
-        Removes all data sources from memory.
-        """
-        count = len(self._sources)
-        self._sources.clear()
-        print(f"AppState: Cleared {count} data sources.")
+    def set_selected_data_source(self, source_id: str | None):
+        """Define qual fonte de dados está selecionada na UI."""
+        self._selected_source_path = source_id
+
+    def update_selected_source_association(self, assoc_type: str):
+        """Atualiza o tipo de associação (global/local) da fonte selecionada."""
+        if not self._selected_source_path:
+            logging.warning("AppState: Tentativa de atualizar associação sem fonte selecionada.")
+            return
+            
+        source = self.get_data_source_by_id(self._selected_source_path)
+        if source:
+            source.association_type = assoc_type
+            logging.info(f"AppState: Associação de '{source.name}' definida para '{assoc_type}'.")
+            
+            # Emite o sinal
+            self.data_association_changed.emit(source.path, source.association_type)

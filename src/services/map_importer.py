@@ -1,131 +1,152 @@
-# SFusion (SYNAPSE Fusion) Mapper
-#
-# Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/services/map_importer.py
-# Author: Gabriel Moraes
-# Date: November 2025
-# Description:
-#    Map Importer (Service). Parses a .net.xml file (Model logic).
-#    It is completely independent of Qt/UI.
-
+import logging
+import gzip
 from lxml import etree
-from typing import Dict, List, Any
+from PySide6.QtCore import QObject, Slot, QRunnable, QThreadPool, Signal
 
-# FIX: Changed import to be absolute from the project root (src.)
+from src.domain.app_state import AppState
 from src.domain.entities import MapNode, MapEdge
-# --- END FIX ---
 
-
-class MapImporter:
+class MapImportWorker(QRunnable):
     """
-    Service class responsible for parsing SUMO .net.xml files.
+    Trabalhador (Worker) para importar o mapa numa thread separada
+    para não bloquear a UI.
     """
-    
-    def __init__(self):
-        """
-        Constructor.
-        """
-        # We can pre-compile XPath expressions if performance is critical,
-        # but for a "Day Zero" tool, direct parsing is fine.
-        pass
+    def __init__(self, file_path: str, app_state: AppState):
+        super().__init__()
+        self.file_path = file_path
+        self._app_state = app_state
 
-    def load_file(self, file_path: str) -> Dict[str, Any]:
-        """
-        Loads and parses a .net.xml file.
-        
-        Args:
-            file_path (str): The absolute path to the .net.xml file.
-            
-        Returns:
-            Dict[str, Any]: A dictionary containing lists of 'nodes' and 'edges'.
-            
-        Raises:
-            Exception: If the file is invalid XML or structure is missing.
-        """
-        print(f"MapImporter: Parsing {file_path}...")
-        
+    @Slot()
+    def run(self):
+        """Executa a importação do mapa."""
+        logging.info(f"MapImportWorker: Iniciando importação de '{self.file_path}'...")
         try:
-            # Parse the XML file
-            # lxml.etree.parse can natively handle .gz files
-            tree = etree.parse(file_path)
-            root = tree.getroot()
+            nodes, edges = self._parse_net_xml(self.file_path)
             
-            nodes = []
-            edges = []
-
-            # --- FIX: Load ALL junctions (nodes), not just 'internal' ---
-            # We want to render the full map for visual context.
-            for junction in root.xpath("//junction"):
-            # --- END FIX ---
-                node_id = junction.get("id")
-                x = float(junction.get("x"))
-                y = float(junction.get("y"))
-                
-                # --- FIX: Read the node type (for Problem 2) ---
-                # Get the 'type' attribute (e.g., "internal", "priority")
-                node_type = junction.get("type", "unknown")
-                # --- END FIX ---
-                
-                # We invert 'y' because Qt's Y-axis is inverted (0 is top)
-                # --- FIX: Pass the node_type to the entity ---
-                nodes.append(MapNode(id=node_id, x=x, y=-y, node_type=node_type))
-                # --- END FIX ---
-
-            # --- FIX: Load ALL edges, not just non-internal ones ---
-            # We want to render the full map.
-            for edge in root.xpath("//edge"):
-            # --- END FIX ---
-                edge_id = edge.get("id")
-                from_node = edge.get("from")
-                to_node = edge.get("to")
-                shape_str = edge.get("shape")
-                
-                shape_coords = []
-                if shape_str:
-                    try:
-                        # Shape is "x1,y1 x2,y2 x3,y3 ..."
-                        points = shape_str.split(' ')
-                        for point in points:
-                            coords = point.split(',')
-                            x = float(coords[0])
-                            y = float(coords[1])
-                            # We invert 'y' because Qt's Y-axis is inverted
-                            shape_coords.append((x, -y))
-                    except Exception as e:
-                        print(f"Warning: Could not parse shape for edge {edge_id}: {e}")
-                        shape_coords = [] # Fallback
-                
-                edges.append(MapEdge(
-                    id=edge_id, 
-                    from_node=from_node, 
-                    to_node=to_node,
-                    shape=shape_coords
-                ))
+            if not nodes and not edges:
+                logging.warning(f"MapImportWorker: Ficheiro '{self.file_path}' não continha nós ou arestas.")
             
-            print(f"MapImporter: Parsing complete. Found {len(nodes)} total nodes and {len(edges)} total edges.")
+            # Atualiza o AppState (isto emitirá o sinal map_data_loaded)
+            self._app_state.set_map_data(nodes, edges)
             
-            return {
-                "nodes": nodes,
-                "edges": edges
-            }
+            logging.info(f"MapImportWorker: Importação concluída. {len(nodes)} nós, {len(edges)} arestas.")
 
         except etree.XMLSyntaxError as e:
-            print(f"CRITICAL: XML Syntax Error in {file_path}. {e}")
-            raise Exception(f"File is not valid XML: {e}")
+            logging.error(f"MapImportWorker: Erro de sintaxe XML ao ler '{self.file_path}': {e}")
         except Exception as e:
-            print(f"CRITICAL: Failed to parse map file. {e}")
-            raise Exception(f"Unknown error during map parsing: {e}")
+            # Erro é apanhado aqui e logado
+            logging.error(f"MapImportWorker: Erro inesperado ao importar mapa: {e}", exc_info=True)
+
+    def _parse_net_xml(self, file_path):
+        """Lê o ficheiro .net.xml (ou .net.xml.gz) e extrai dados."""
+        
+        open_func = gzip.open if file_path.endswith('.gz') else open
+        
+        with open_func(file_path, 'rb') as f:
+            parser = etree.XMLParser(target=NetXMLParserTarget())
+            # O etree.parse() irá chamar os métodos do target
+            # Se um erro (como o TypeError) ocorrer dentro do target,
+            # ele será lançado aqui.
+            etree.parse(f, parser)
+            
+            return parser.target.nodes, parser.target.edges
+
+
+class NetXMLParserTarget(object):
+    """
+    Alvo (target) do parser lxml. Chamado incrementalmente
+    à medida que o XML é lido. (Poupa muita memória)
+    """
+    def __init__(self):
+        self.nodes = []
+        self.edges = []
+        self._current_edge = None
+
+    def start(self, tag, attrib):
+        """Chamado quando uma tag <tag> é aberta."""
+        try:
+            if tag == "junction" and attrib.get("type") != "internal":
+                node = MapNode(
+                    id=attrib["id"],
+                    x=float(attrib["x"]),
+                    y=float(attrib["y"]),
+                    node_type=attrib.get("type", "unknown"),
+                    real_name=None 
+                )
+                self.nodes.append(node)
+
+            elif tag == "edge" and not attrib.get("function") == "internal":
+                # --- 1. CORREÇÃO PRINCIPAL (Início) ---
+                # Agora também lemos 'from' e 'to' do XML.
+                # Usamos attrib[] para garantir que eles existem,
+                # o que levanta um KeyError se faltarem (que é apanhado abaixo)
+                self._current_edge = {
+                    "id": attrib["id"],
+                    "from_node": attrib["from"], # <-- Adicionado
+                    "to_node": attrib["to"],     # <-- Adicionado
+                    "shape": []
+                }
+                # --- FIM DA CORREÇÃO ---
+            
+            elif tag == "lane" and self._current_edge is not None:
+                shape_str = attrib.get("shape")
+                if shape_str:
+                    points = [
+                        (float(p.split(',')[0]), float(p.split(',')[1]))
+                        for p in shape_str.split(' ')
+                    ]
+                    self._current_edge["shape"] = points
+
+        except KeyError as e:
+            logging.warning(f"NetXMLParserTarget: Atributo em falta no XML: {e} (Tag: {tag}, Attrs: {attrib})")
+        except Exception as e:
+            logging.error(f"NetXMLParserTarget: Erro no 'start' (Tag: {tag}): {e}")
+
+
+    def end(self, tag):
+        """Chamado quando uma tag </tag> é fechada."""
+        if tag == "edge" and self._current_edge is not None:
+            if self._current_edge["shape"]:
+                # --- 2. CORREÇÃO PRINCIPAL (Fim) ---
+                # Agora passamos os argumentos em falta (from_node, to_node)
+                # para o construtor do MapEdge.
+                edge = MapEdge(
+                    id=self._current_edge["id"],
+                    from_node=self._current_edge["from_node"], # <-- Adicionado
+                    to_node=self._current_edge["to_node"],     # <-- Adicionado
+                    shape=self._current_edge["shape"],
+                    real_name=None
+                )
+                self.edges.append(edge)
+            
+            self._current_edge = None
+
+    def data(self, data):
+        pass
+
+    def close(self):
+        return "Parsing finished"
+
+
+class MapImporter(QObject):
+    """
+    Serviço de importação de mapa. Gere a pool de threads.
+    """
+    
+    def __init__(self, app_state: AppState):
+        super().__init__()
+        self._app_state = app_state
+        self._thread_pool = QThreadPool.globalInstance()
+        logging.info("MapImporter (Serviço) inicializado.")
+
+    @Slot(str)
+    def load_map(self, file_path: str):
+        """
+        Inicia um MapImportWorker numa thread separada para carregar o mapa.
+        """
+        if not file_path:
+            logging.warning("MapImporter: 'load_map' chamado com caminho vazio.")
+            return
+
+        worker = MapImportWorker(file_path, self._app_state)
+        self._thread_pool.start(worker)

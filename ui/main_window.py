@@ -2,131 +2,177 @@
 #
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Este programa é software livre: pode redistribuí-lo e/ou modificá-lo
+# sob os termos da Licença Pública Geral Affero GNU como publicada pela
+# Free Software Foundation, quer a versão 3 da Licença, ou
+# (à sua opção) qualquer versão posterior.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# Este programa é distribuído na esperança de que seja útil,
+# mas SEM QUALQUER GARANTIA; sem mesmo a garantia implícita de
+# COMERCIALIZAÇÃO ou ADEQUAÇÃO A UM PROPÓSITO ESPECÍFICO. Veja a
+# Licença Pública Geral Affero GNU para mais detalhes.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Deveria ter recebido uma cópia da Licença Pública Geral Affero GNU
+# junto com este programa. Se não, veja <https://www.gnu.org/licenses/>.
 
 # File: ui/main_window.py
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Main Window (View). The main "shell" of the application.
-#    It is a "dumb" component that just holds other widgets.
+#    MainWindow (View). A "casca" principal da UI,
+#    baseada em QMainWindow.
 
-from PySide6.QtCore import Qt
+import logging
+from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import (
-    QMainWindow, 
-    QWidget, 
-    QStatusBar, 
-    QToolBar, 
-    QHBoxLayout,
-    QVBoxLayout # FIX: Import for the map container
+    QMainWindow,
+    QToolBar,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
+    QSplitter,
+    QMessageBox
 )
 
-# Import sub-widgets
+# Dependências (outras partes da UI ou Utilitários)
 from ui.map.map_view import MapView
 from ui.sources.sources_panel import SourcesPanel
+from src.utils.i18n import I18nManager
+# 1. Importar o novo EditorPanel
+from ui.editor.editor_panel import EditorPanel
 
-# --- FIX (Req 3): Import the new InfoPanel ---
-from ui.map.info_panel import InfoPanel
-# --- END FIX ---
 
 class MainWindow(QMainWindow):
     """
-    Main Window (View)
-    
-    The main "shell" of the application. It holds the toolbar,
-    status bar, and the central widget (which contains the map
-    and the sources panel).
+    View principal da aplicação.
+    Contém a barra de ferramentas, barra de status e o layout
+    que organiza a MapView e o SourcesPanel.
     """
-    def __init__(self, parent=None):
+    
+    # Sinais que a View emite para o MainController
+    open_map_requested = Signal()
+    add_source_requested = Signal()
+    save_config_requested = Signal()
+
+    def __init__(self, i18n: I18nManager, parent: QWidget | None = None):
         """
-        Constructor.
+        Inicializa a janela principal.
+        
+        :param i18n: O gestor de internacionalização (tradução).
+        :param parent: O widget "Pai" (opcional, normalmente None).
         """
         super().__init__(parent)
+        self._i18n = i18n
         
-        # --- 1. Create Actions ---
-        # (These will be configured by the controller)
-        self.open_map_action = QAction("Open Map")
-        self.add_source_action = QAction("Add Source")
-        self.save_map_action = QAction("Save Map")
-        
-        # --- 2. Create UI Components ---
-        self.main_toolbar = QToolBar("Main")
-        self.status_bar = QStatusBar()
-        
-        # (Sub-widgets are created in _setup_ui)
+        # 2. Adicionar referência para o novo painel
+        self.editor_panel = None
         self.map_view = None
         self.sources_panel = None
         
-        # --- FIX (Req 3): Add placeholder for info panel ---
-        self.info_panel = None
-        self.map_container = None
-        # --- END FIX ---
-        
-        # --- 3. Setup Layout ---
-        self._setup_ui()
+        # Inicializa a UI
+        self._init_ui()
+        logging.info("MainWindow (View) inicializada.")
 
-    def _setup_ui(self):
-        """
-        Initializes and lays out the sub-widgets.
-        """
+    def _init_ui(self):
+        """Constrói os componentes da UI (barra de ferramentas, layout)."""
         
-        # --- 1. Configure Shell ---
-        self.setWindowTitle("SFusion Mapper")
-        self.setStatusBar(self.status_bar)
+        t = self._i18n.t
         
-        # --- 2. Configure Toolbar ---
-        self.main_toolbar.addAction(self.open_map_action)
-        self.main_toolbar.addAction(self.add_source_action)
-        self.main_toolbar.addSeparator()
-        self.main_toolbar.addAction(self.save_map_action)
-        self.addToolBar(self.main_toolbar)
-        
-        # --- 3. Create Main Widgets ---
-        self.map_view = MapView()
-        self.sources_panel = SourcesPanel()
+        self.setWindowTitle(t("main_window.window_title"))
+        self.setGeometry(100, 100, 1200, 800)
 
-        # --- 4. Setup Central Widget ---
-        
-        # --- FIX (Req 3): Create Map Container ---
-        # This widget will hold the map AND the floating info panel
-        self.map_container = QWidget()
-        
-        # Create the info panel as a child of the container
-        self.info_panel = InfoPanel(self.map_container)
-        # Position it in the top-left corner
-        self.info_panel.setFixedSize(300, 150)
-        self.info_panel.move(10, 10)
-        self.info_panel.raise_() # Ensure it's on top
-        
-        # Create a layout for the container
-        container_layout = QVBoxLayout(self.map_container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        # Add the map view to fill the container
-        container_layout.addWidget(self.map_view)
-        # --- END FIX ---
+        # 1. Barra de Ferramentas (Toolbar)
+        toolbar = QToolBar(t("main_window.toolbar_name"))
+        toolbar.setIconSize(QSize(24, 24))
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon) 
+        self.addToolBar(toolbar)
 
-        central_widget = QWidget()
-        central_layout = QHBoxLayout(central_widget)
-        
-        # Add the map container (which holds map + panel)
-        central_layout.addWidget(self.map_container, 1) # Give it stretch factor 1
-        # Add the sources panel
-        central_layout.addWidget(self.sources_panel, 0) # No stretch
-        
+        # Ações (Abrir, Adicionar, Salvar)
+        action_open = QAction(
+            QIcon.fromTheme("document-open"),
+            t("main_window.action_open_map"), 
+            self
+        )
+        action_open.setStatusTip(t("main_window.action_open_map_tip"))
+        action_open.triggered.connect(self.open_map_requested)
+        toolbar.addAction(action_open)
+
+        action_add_source = QAction(
+            QIcon.fromTheme("folder-add"),
+            t("main_window.action_add_source"), 
+            self
+        )
+        action_add_source.setStatusTip(t("main_window.action_add_source_tip"))
+        action_add_source.triggered.connect(self.add_source_requested)
+        toolbar.addAction(action_add_source)
+
+        toolbar.addSeparator()
+
+        action_save = QAction(
+            QIcon.fromTheme("document-save"),
+            t("main_window.action_save_config"), 
+            self
+        )
+        action_save.setStatusTip(t("main_window.action_save_config_tip"))
+        action_save.triggered.connect(self.save_config_requested)
+        toolbar.addAction(action_save)
+
+        # 2. Barra de Status
+        self.setStatusBar(QStatusBar(self))
+        self.statusBar().showMessage(t("main_window.status_ready"))
+
+        # 3. Widget Central e Layout (Splitter)
+        central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         
-        # --- 5. Set Initial State ---
-        self.status_bar.showMessage("Ready.")
-        self.resize(1200, 800)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+
+        self.splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(self.splitter)
+
+    # --- Métodos de "Injeção" da View ---
+
+    # 3. Adicionar o "setter" para o novo painel (MÉTODO EM FALTA)
+    def set_editor_panel(self, editor_panel: EditorPanel):
+        """Recebe e insere o EditorPanel no layout (à esquerda)."""
+        self.editor_panel = editor_panel
+        # Adiciona o painel editor (será o índice 0)
+        self.splitter.addWidget(self.editor_panel)
+
+    def set_map_view(self, map_view: MapView):
+        """Recebe e insere a MapView no layout (ao centro)."""
+        self.map_view = map_view
+        # Adiciona o mapa (será o índice 1)
+        self.splitter.addWidget(self.map_view)
+
+    def set_sources_panel(self, sources_panel: SourcesPanel):
+        """Recebe e insere o SourcesPanel no layout (à direita)."""
+        self.sources_panel = sources_panel
+        # Adiciona o painel de fontes (será o índice 2)
+        self.splitter.addWidget(self.sources_panel)
+        
+        # 4. Atualizar os tamanhos e o comportamento de "stretch"
+        # Define os tamanhos: (Editor: 250px, Mapa: 700px, Fontes: 250px)
+        self.splitter.setSizes([250, 700, 250])
+        
+        # Define o comportamento de "stretch" (quem cresce)
+        self.splitter.setStretchFactor(0, 0) # Painel Editor (não cresce)
+        self.splitter.setStretchFactor(1, 1) # Mapa (cresce)
+        self.splitter.setStretchFactor(2, 0) # Painel Fontes (não cresce)
+
+    # --- Métodos de Feedback (Chamados pelo MainController) ---
+
+    def show_status_message(self, message: str, timeout: int = 3000):
+        """Exibe uma mensagem na barra de status."""
+        self.statusBar().showMessage(message, timeout)
+
+    def show_error_message(self, title: str, message: str):
+        """Exibe um pop-up de erro crítico."""
+        logging.error(f"Mostrando erro para o utilizador: {title} - {message}")
+        QMessageBox.critical(self, title, message)
+
+    def show_info_message(self, title: str, message: str):
+        """Exibe um pop-up de informação."""
+        QMessageBox.information(self, title, message)

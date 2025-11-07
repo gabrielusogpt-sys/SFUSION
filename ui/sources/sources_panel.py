@@ -1,10 +1,5 @@
 # SFusion (SYNAPSE Fusion) Mapper
 #
-# This program is an open-source visual utility tool for the SFusion/SYNAPSE
-# ecosystem. It is designed to create mapping configurations (as .db files)
-# by associating traffic data sources (sensors, cameras, feeds) with a
-# network topology map (e.g., SUMO .net.xml).
-#
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,144 +19,174 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Defines the SourcesPanel (QWidget), a composite widget for the
-#    left side of the UI. It contains the list of data sources and the
-#    details/editor panel for the selected source.
+#    SourcesPanel (View). O painel lateral direito (QDockWidget)
+#    que lista as fontes de dados carregadas.
 
-import sys
-from PySide6.QtCore import Qt
+import logging
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QApplication,
     QWidget,
     QVBoxLayout,
-    QListWidget,
     QGroupBox,
-    QFormLayout,
-    QRadioButton,
-    QPushButton,
+    QListWidget,
+    QListWidgetItem,
     QLabel,
-    QSplitter,
-    QListWidgetItem
+    QRadioButton,
+    QHBoxLayout,
+    QFrame
 )
+
+# 1. Importar I18nManager
+from src.utils.i18n import I18nManager
+from src.domain.entities import DataSource
+
 
 class SourcesPanel(QWidget):
     """
-    The SourcesPanel (View) component.
-
-    This class provides the UI for listing, adding, and editing the
-    properties of data sources (e..g, setting them as Global/Local
-    and associating them with map elements).
-    
-    It is a "dumb" component that emits signals (e.g., source_selected)
-    and whose fields are populated by a Controller.
+    View do painel lateral.
+    Exibe a lista de DataSources e os controlos de associação.
     """
-    def __init__(self, parent=None):
+    
+    # Sinais para o SourcesController
+    source_selection_changed = Signal(str) # Emite o ID (caminho) da fonte
+    association_type_changed = Signal(str) # Emite "global" ou "local"
+
+    # --- 2. Alteração Principal: Corrigir o __init__ ---
+    def __init__(self, i18n: I18nManager, parent: QWidget | None = None):
         """
-        SourcesPanel constructor.
+        Inicializa o painel de fontes.
+        
+        :param i18n: O gestor de internacionalização (tradução).
+        :param parent: O widget "Pai" (normalmente a MainWindow).
         """
+        # 3. Chamar o super() com o 'parent' correto
         super().__init__(parent)
-
-        # Main layout for this widget
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0) # Use full space
-
-        # Create a vertical splitter to divide list and details
-        self.splitter = QSplitter(Qt.Vertical)
-        self.main_layout.addWidget(self.splitter)
-
-        # Create the top part: the list of sources
-        self.sources_list_widget = self._create_sources_list_widget()
-        self.splitter.addWidget(self.sources_list_widget)
-
-        # Create the bottom part: the details editor
-        self.details_widget = self._create_details_widget()
-        self.splitter.addWidget(self.details_widget)
-
-        # Set initial sizes
-        self.splitter.setStretchFactor(0, 2) # List (top) gets 2/3 of space
-        self.splitter.setStretchFactor(1, 1) # Details (bottom) gets 1/3
-
-    def _create_sources_list_widget(self):
-        """
-        Creates the top widget (QGroupBox) containing the QListWidget.
-        """
-        # Use a GroupBox for a nice title
-        list_group = QGroupBox("Data Sources") # Placeholder text
-        list_layout = QVBoxLayout(list_group)
         
-        self.sources_list = QListWidget()
-        # TODO: The controller will add items here
+        # 4. Armazenar o i18n corretamente
+        self._i18n = i18n
+        self._init_ui()
+        logging.info("SourcesPanel (View) inicializado.")
+
+    def _init_ui(self):
+        """Constrói os componentes da UI."""
+        t = self._i18n.t
         
-        list_layout.addWidget(self.sources_list)
-        return list_group
+        # Layout principal do painel
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(10)
 
-    def _create_details_widget(self):
-        """
-        Creates the bottom widget (QGroupBox) containing the editor
-        for the selected data source.
-        """
-        self.details_group = QGroupBox("Source Details") # Placeholder text
-        details_layout = QFormLayout(self.details_group)
-
-        # --- Widgets for the details editor ---
+        # --- 1. Caixa de Lista de Fontes ---
+        sources_group = QGroupBox(t("sources_panel.title"))
+        sources_layout = QVBoxLayout(sources_group)
         
-        # 1. Type selection (Global vs Local)
-        self.radio_global = QRadioButton("Global") # Placeholder text
-        self.radio_local = QRadioButton("Local") # Placeholder text
+        self.sources_list_widget = QListWidget()
+        self.sources_list_widget.setSpacing(3)
         
-        type_layout = QVBoxLayout()
-        type_layout.addWidget(self.radio_global)
-        type_layout.addWidget(self.radio_local)
+        # Conecta o sinal da UI
+        self.sources_list_widget.currentItemChanged.connect(
+            self._on_list_selection_changed
+        )
         
-        details_layout.addRow("Type:", type_layout) # Placeholder text
+        sources_layout.addWidget(self.sources_list_widget)
+        layout.addWidget(sources_group)
 
-        # 2. Association button
-        self.associate_button = QPushButton("Associate with Map Element")
-        details_layout.addRow(self.associate_button)
+        # --- 2. Caixa de Controlo de Associação ---
+        association_group = QGroupBox(t("sources_panel.association_title"))
+        association_layout = QVBoxLayout(association_group)
+        association_layout.setSpacing(10)
 
-        # 3. Status label
-        self.status_label = QLabel("Not associated.") # Placeholder text
-        details_layout.addRow("Status:", self.status_label) # Placeholder text
+        self.radio_global = QRadioButton(t("sources_panel.radio_global"))
+        self.radio_global.setToolTip(t("sources_panel.radio_global_tip"))
         
-        # The details panel should be disabled until a source is selected
-        self.details_group.setEnabled(False)
+        self.radio_local = QRadioButton(t("sources_panel.radio_local"))
+        self.radio_local.setToolTip(t("sources_panel.radio_local_tip"))
+        self.radio_local.setChecked(True) # Padrão
         
-        return self.details_group
-
-    # --- Public Methods (for the Controller) ---
-
-    def add_source_to_list(self, name, id):
-        """
-        Adds a new item to the sources list.
-        Called by the controller.
-        """
-        item = QListWidgetItem(name)
-        item.setData(Qt.UserRole, id) # Store a unique ID in the item
-        self.sources_list.addItem(item)
+        # Conecta os sinais da UI
+        self.radio_global.toggled.connect(self._on_radio_toggled)
         
-    def clear_sources_list(self):
-        """ Clears all items from the list. """
-        self.sources_list.clear()
+        association_layout.addWidget(self.radio_global)
+        association_layout.addWidget(self.radio_local)
+        
+        # (Desativado até que uma fonte seja selecionada)
+        association_group.setEnabled(False)
+        self.association_group = association_group # Salva referência
 
-    def set_details_enabled(self, enabled):
-        """
-        Enables or disables the entire details panel.
-        """
-        self.details_group.setEnabled(enabled)
+        layout.addWidget(association_group)
 
-# --- This block allows you to run this file directly for testing ---
-if __name__ == "__main__":
+        # Espaçador para empurrar tudo para cima
+        layout.addStretch(1)
+
+    # --- Slots Internos (Emitem Sinais para o Controller) ---
+
+    @Slot(QListWidgetItem, QListWidgetItem)
+    def _on_list_selection_changed(self, current: QListWidgetItem, previous):
+        """Chamado pela QListWidget quando a seleção muda."""
+        if current:
+            # Ativa o painel de associação
+            self.association_group.setEnabled(True)
+            
+            # Obtém o ID (path) armazenado no item
+            source_id = current.data(Qt.UserRole)
+            self.source_selection_changed.emit(source_id)
+        else:
+            # Desativa o painel se nada estiver selecionado
+            self.association_group.setEnabled(False)
+            self.source_selection_changed.emit("")
+
+    @Slot(bool)
+    def _on_radio_toggled(self, checked: bool):
+        """Chamado quando o Radio 'Global' muda (implica o 'Local')."""
+        if checked:
+            self.association_type_changed.emit("global")
+        else:
+            self.association_type_changed.emit("local")
+
+    # --- Métodos Públicos (Chamados pelo Controller) ---
+
+    @Slot(list)
+    def update_sources_list(self, data_sources: list[DataSource]):
+        """Atualiza a QListWidget com os dados do AppState."""
+        self.sources_list_widget.clear()
+        
+        if not data_sources:
+            # (Opcional: Mostrar um item "Nenhuma fonte...")
+            return
+            
+        for source in data_sources:
+            # Usa o nome da pasta como o texto
+            item = QListWidgetItem(source.name)
+            item.setToolTip(f"Caminho: {source.path}")
+            
+            # Armazena o ID (caminho) no item
+            item.setData(Qt.UserRole, source.path) 
+            
+            self.sources_list_widget.addItem(item)
     
-    app = QApplication(sys.argv)
-    
-    panel = SourcesPanel()
-    panel.setWindowTitle("SourcesPanel Test")
-    panel.resize(400, 600)
-    
-    # Add some dummy data for testing
-    panel.add_source_to_list("/data/cameras/", "id_cam_1")
-    panel.add_source_to_list("/data/waze/", "id_waze_1")
-    panel.add_source_to_list("/data/loops/", "id_loop_1")
-    
-    panel.show()
-    sys.exit(app.exec())
+    @Slot(str)
+    def set_selected_source(self, source_id: str):
+        """Define a seleção na lista (ex: ao carregar um .db)."""
+        if not source_id:
+            self.sources_list_widget.clearSelection()
+            return
+            
+        for i in range(self.sources_list_widget.count()):
+            item = self.sources_list_widget.item(i)
+            if item.data(Qt.UserRole) == source_id:
+                item.setSelected(True)
+                return
+
+    @Slot(str)
+    def set_association_type(self, assoc_type: str):
+        """Define os botões de rádio (ex: ao selecionar um item)."""
+        # Desconecta temporariamente os sinais para evitar loop
+        self.radio_global.toggled.disconnect(self._on_radio_toggled)
+        
+        if assoc_type == "global":
+            self.radio_global.setChecked(True)
+        else:
+            self.radio_local.setChecked(True)
+            
+        # Reconecta os sinais
+        self.radio_global.toggled.connect(self._on_radio_toggled)

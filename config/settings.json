@@ -1,6 +1,18 @@
 {
-    "default_language_frontend": "pt_br_frontend.json",
-    "default_language_backend": "pt_br_backend.json",
-    "last_map_directory": ".",
-    "style": "default"
+  "app_name": "SFusion Mapper",
+  "version": "0.1.0",
+  "language": "pt_BR",
+  "locale_path": "locale",
+
+  "map_zoom": {
+    "min": 0.05,
+    "max": 20.0
+  },
+
+  "map_colors": {
+    "background": "#FFFFFF",
+    "edge": "#4A4A4A",
+    "node": "#E74C3C",
+    "internal_node": "#BDC3C7"
+  }
 }

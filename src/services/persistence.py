@@ -19,121 +19,142 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Persistence Service (Service). Saves the mapping to a .db (Model logic).
-#    It is completely independent of Qt/UI.
+#    PersistenceService (Service). Saves the configuration map to a .db.
 
+import logging
 import sqlite3
-import os
-from typing import List, Iterable
+import json
+from PySide6.QtCore import QObject, Slot, QRunnable, QThreadPool
 
-# FIX: Changed import to be absolute from the project root (src.)
-from src.domain.entities import DataSource, AssociationType
-# --- END FIX ---
+# 1. Importar o AppState
+from src.domain.app_state import AppState
 
 
-class PersistenceService:
+class PersistenceWorker(QRunnable):
     """
-    Service class responsible for saving the final mapping configuration
-    to an SQLite (.db) database file.
+    Trabalhador (Worker) para salvar a configuração em .db numa thread separada.
     """
-    
-    def __init__(self):
-        """
-        Constructor.
-        """
-        pass
+    # 2. Aceitar o app_state
+    def __init__(self, file_path: str, app_state: AppState):
+        super().__init__()
+        self.file_path = file_path
+        # 3. Armazenar a referência
+        self._app_state = app_state 
 
-    def save_mapping(self, 
-                     save_path: str, 
-                     map_base_path: str, 
-                     data_sources: Iterable[DataSource]):
-        """
-        Creates or overwrites a .db file with the current mapping config.
-        
-        Args:
-            save_path (str): The absolute path to the .db file to create.
-            map_base_path (str): The absolute path to the .net.xml file used.
-            data_sources (Iterable[DataSource]): A list of all DataSource entities.
-            
-        Raises:
-            Exception: If sqlite3 fails to write to the database.
-        """
-        print(f"PersistenceService: Saving mapping to {save_path}...")
-        
-        # Ensure directory exists (though QFileDialog usually handles this)
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        
-        # Delete the file if it already exists to ensure a fresh start
-        if os.path.exists(save_path):
-            os.remove(save_path)
-            
+    @Slot()
+    def run(self):
+        """Executa a lógica de salvamento."""
+        logging.info(f"PersistenceWorker: Iniciando salvamento em '{self.file_path}'...")
         try:
-            # Connect (this will create the file)
-            with sqlite3.connect(save_path) as conn:
-                cursor = conn.cursor()
-                
-                # --- 1. Create ConfiguracaoGeral Table ---
-                # Stores the path to the map this config was based on
-                cursor.execute("""
-                CREATE TABLE ConfiguracaoGeral (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    chave TEXT UNIQUE NOT NULL,
-                    valor TEXT NOT NULL
-                )
-                """)
-                
-                # --- 2. Create MapeamentoFontes Table ---
-                # Stores the main mapping relationships
-                cursor.execute("""
-                CREATE TABLE MapeamentoFontes (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fonte_id_unico TEXT NOT NULL,
-                    caminho_dados TEXT NOT NULL,
-                    parser_id TEXT,
-                    tipo_associacao TEXT NOT NULL,
-                    associacao_local_id TEXT
-                )
-                """)
-                
-                conn.commit()
-                print("PersistenceService: Tables created successfully.")
-
-                # --- 3. Insert General Config Data ---
-                map_filename = os.path.basename(map_base_path)
-                cursor.execute(
-                    "INSERT INTO ConfiguracaoGeral (chave, valor) VALUES (?, ?)",
-                    ("map_base_file", map_filename)
-                )
-                
-                # --- 4. Insert Data Source Mappings ---
-                rows_to_insert = []
-                for source in data_sources:
-                    rows_to_insert.append((
-                        source.id,
-                        source.path,
-                        source.parser_id,
-                        source.association_type.value, # "GLOBAL" or "LOCAL"
-                        source.associated_node_id # Will be NULL if not applicable
-                    ))
-                
-                cursor.executemany("""
-                INSERT INTO MapeamentoFontes 
-                    (fonte_id_unico, caminho_dados, parser_id, tipo_associacao, associacao_local_id)
-                VALUES (?, ?, ?, ?, ?)
-                """, rows_to_insert)
-
-                conn.commit()
-                
-                print(f"PersistenceService: Save complete. {len(rows_to_insert)} sources saved.")
+            # 4. Obter os dados mais recentes do AppState
+            nodes = self._app_state.get_all_nodes()
+            edges = self._app_state.get_all_edges()
+            sources = self._app_state.get_all_data_sources()
+            
+            self._create_database_and_save(nodes, edges, sources)
+            logging.info(f"PersistenceWorker: Configuração salva com sucesso em {self.file_path}")
 
         except sqlite3.Error as e:
-            print(f"CRITICAL: SQLite error during save: {e}")
-            # Clean up the (likely corrupt) file
-            if os.path.exists(save_path):
-                os.remove(save_path)
-            raise Exception(f"Database error: {e}")
+            logging.error(f"PersistenceWorker: Erro de SQLite ao salvar em {self.file_path}: {e}")
         except Exception as e:
-            print(f"CRITICAL: Unknown error during save: {e}")
-            if os.path.exists(save_path):
-                os.remove(save_path)
-            raise Exception(f"Unknown error: {e}")
+            logging.error(f"PersistenceWorker: Falha inesperada ao salvar configuração: {e}", exc_info=True)
+
+    def _create_database_and_save(self, nodes, edges, sources):
+        """
+        Cria/Substitui o ficheiro .db e insere os dados.
+        """
+        with sqlite3.connect(self.file_path) as conn:
+            cursor = conn.cursor()
+            
+            # --- Tabela 1: Metadados de Nós (Nós/Interseções) ---
+            cursor.execute("DROP TABLE IF EXISTS node_metadata")
+            cursor.execute("""
+                CREATE TABLE node_metadata (
+                    sumo_id TEXT PRIMARY KEY,
+                    real_name TEXT
+                )
+            """)
+            # Filtra apenas os nós que o utilizador renomeou
+            node_data = [
+                (n.id, n.real_name) for n in nodes if n.real_name
+            ]
+            if node_data:
+                cursor.executemany("INSERT INTO node_metadata VALUES (?, ?)", node_data)
+
+            # --- Tabela 2: Metadados de Arestas (Ruas) ---
+            cursor.execute("DROP TABLE IF EXISTS edge_metadata")
+            cursor.execute("""
+                CREATE TABLE edge_metadata (
+                    sumo_id TEXT PRIMARY KEY,
+                    real_name TEXT
+                )
+            """)
+            # Filtra apenas as arestas que o utilizador renomeou
+            edge_data = [
+                (e.id, e.real_name) for e in edges if e.real_name
+            ]
+            if edge_data:
+                cursor.executemany("INSERT INTO edge_metadata VALUES (?, ?)", edge_data)
+            
+            # --- Tabela 3: Associações de Fontes de Dados ---
+            cursor.execute("DROP TABLE IF EXISTS data_associations")
+            cursor.execute("""
+                CREATE TABLE data_associations (
+                    source_name TEXT PRIMARY KEY,
+                    source_path TEXT NOT NULL,
+                    association_type TEXT NOT NULL,
+                    associated_element_id TEXT,
+                    file_types_json TEXT
+                )
+            """)
+            # Salva todas as fontes de dados
+            source_data = [
+                (
+                    s.name, 
+                    s.path, 
+                    s.association_type, 
+                    s.associated_element_id, 
+                    json.dumps(s.file_types) # Serializa a lista de tipos
+                ) for s in sources
+            ]
+            if source_data:
+                cursor.executemany("INSERT INTO data_associations VALUES (?, ?, ?, ?, ?)", source_data)
+
+            # Confirma as transações
+            conn.commit()
+
+
+class PersistenceService(QObject):
+    """
+    Serviço de persistência. Gere a pool de threads para salvar
+    o AppState num ficheiro .db (SQLite).
+    (Refatorado do MainController)
+    """
+    
+    # --- 5. Alteração Principal: Corrigir o __init__ ---
+    def __init__(self, app_state: AppState):
+        super().__init__()
+        # 6. Armazenar a referência
+        self._app_state = app_state 
+        self._thread_pool = QThreadPool.globalInstance()
+        logging.info("PersistenceService (Serviço) inicializado.")
+
+    @Slot(str)
+    def save_configuration(self, file_path: str):
+        """
+        Inicia um PersistenceWorker numa thread separada.
+        """
+        if not file_path:
+            logging.warning("PersistenceService: 'save_configuration' chamado com caminho vazio.")
+            return
+            
+        if not file_path.endswith(".db"):
+            file_path += ".db"
+            logging.info(f"PersistenceService: Nome do ficheiro corrigido para '{file_path}'")
+
+        # 7. Passar o app_state (que contém os dados) para o Worker
+        worker = PersistenceWorker(file_path, self._app_state)
+        
+        # (Opcional: conectar sinais de conclusão/erro do worker)
+
+        self._thread_pool.start(worker)

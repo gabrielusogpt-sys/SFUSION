@@ -1,106 +1,81 @@
-# SFusion (SYNAPSE Fusion) Mapper
-#
-# Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# File: src/utils/i18n.py
-# Author: Gabriel Moraes
-# Date: November 2025
-# Description:
-#    I18nManager (Utility). Loads and manages translation .json files.
-
 import json
 import os
+import logging
 
 class I18nManager:
     """
-    Manages loading and accessing translations from .json files.
+    Gestor de Internacionalização (i18n).
+    Lê ficheiros .json de tradução.
     """
-    def __init__(self, locale_dir: str):
+    
+    # 1. Alterar o __init__ para aceitar 'default_lang'
+    def __init__(self, locale_path: str = "locale", default_lang: str = "en"):
         """
-        Initializes the manager with the path to the locale directory.
+        Inicializa o gestor.
+        :param locale_path: Caminho para a pasta 'locale' (ex: "locale")
+        :param default_lang: Língua a ser carregada (ex: "en", "pt_BR")
+        """
+        self.locale_path = locale_path
+        self.translations = {}
         
-        Args:
-            locale_dir (str): The absolute path to the 'locale'
-                              or 'locale_backend' directory.
-        """
-        self.locale_dir = locale_dir
-        self._translations = {}
-        print(f"I18nManager: Initialized for directory: {self.locale_dir}")
+        # 2. Usar o 'default_lang' em vez de "en" hardcoded
+        try:
+            self.set_language(default_lang)
+        except FileNotFoundError:
+            # Fallback: Se a língua pedida não existir, tenta carregar 'en'
+            logging.error(f"Ficheiro de tradução '{default_lang}.json' não encontrado.")
+            logging.warning("A carregar 'en' (Inglês) como fallback.")
+            try:
+                self.set_language("en")
+            except FileNotFoundError:
+                # Se nem 'en' existir, a UI ficará sem texto.
+                logging.critical("Ficheiro 'en.json' de fallback não encontrado. A UI pode estar vazia.")
+                # self.translations continua a ser {}
 
-    def load_language(self, language_code: str):
-        """
-        Loads a specific language file (e.g., "pt_BR.json") from the
-        locale directory into memory.
+    def set_language(self, lang_code: str):
+        """Carrega um ficheiro de língua (ex: "pt_BR") da pasta locale."""
+        file_path = os.path.join(self.locale_path, f"{lang_code}.json")
         
-        Args:
-            language_code (str): The language code (e.g., "pt_BR", "en").
-            
-        Raises:
-            Exception: Propagates exceptions if file loading fails critically.
-        """
-        lang_file_path = os.path.join(self.locale_dir, f"{language_code}.json")
-        
-        if not os.path.exists(lang_file_path):
-            print(f"Warning: Language file not found at {lang_file_path}. Using empty.")
-            self._translations = {}
-            return
+        if not os.path.exists(file_path):
+            # Lança um erro claro se o ficheiro não for encontrado
+            raise FileNotFoundError(f"Ficheiro de tradução não encontrado: {file_path}")
 
         try:
-            with open(lang_file_path, 'r', encoding='utf-8') as f:
-                self._translations = json.load(f)
-            print(f"I18nManager: Successfully loaded language '{language_code}' from {lang_file_path}.")
-            
+            with open(file_path, "r", encoding="utf-8") as f:
+                self.translations = json.load(f)
+            logging.info(f"Traduções carregadas de: {file_path}")
         except json.JSONDecodeError as e:
-            # FIX: Added robust error logging
-            print(f"CRITICAL: Failed to parse {lang_file_path}: {e}. Using empty.")
-            self._translations = {}
-            raise e # Re-raise to stop execution if translations fail
+            logging.error(f"Erro ao ler o JSON de tradução {file_path}: {e}")
+            self.translations = {} # Garante que não usamos traduções corruptas
         except Exception as e:
-            # FIX: Added robust error logging
-            print(f"CRITICAL: Failed to read {lang_file_path}: {e}. Using empty.")
-            self._translations = {}
-            raise e # Re-raise to stop execution
-            # --- END FIX ---
+            logging.error(f"Erro desconhecido ao carregar {file_path}: {e}")
+            self.translations = {}
 
-    def t(self, key: str, default: str = None) -> str:
+
+    def t(self, key: str, **kwargs) -> str:
         """
-        Translates a given key.
-        
-        Args:
-            key (str): The key to translate (e.g., "main_window.title").
-            default (str, optional): A fallback value if the key is not found.
-        
-        Returns:
-            str: The translated string, the default, or a warning message.
+        Traduz uma chave (key) usando o dicionário carregado.
+        (Corrigido para ler chaves 'planas' ex: "main_window.title")
         """
-        # --- FIX ---
-        # The JSON files use flat keys (e.g., "main_window.window_title")
-        # not nested keys. The original code (which split the key by '.')
-        # was incorrect for the JSON file structure.
-        #
-        # We must look up the entire key string directly.
         try:
-            return self._translations[key]
-        
-        # --- END FIX ---
+            # Acede diretamente à chave
+            translation = self.translations.get(key)
+            
+            # Se a chave não for encontrada, retorna a própria chave
+            if translation is None:
+                logging.warning(f"Chave de tradução não encontrada: '{key}'")
+                return key
+
+            # (Opcional) Substitui placeholders (ex: {nome})
+            if kwargs:
+                translation = translation.format(**kwargs)
+                
+            return translation
+            
         except KeyError:
-            print(f"Warning: Translation key not found: '{key}'")
-            if default:
-                return default
-            return f"KEY_NOT_FOUND: {key}"
+            # Isto pode acontecer se a chave existir mas o .format() falhar
+            logging.warning(f"Erro de formatação na tradução da chave: '{key}'")
+            return key
         except Exception as e:
-            print(f"Error during translation of key '{key}': {e}")
-            return f"ERROR: {key}"
+            logging.error(f"Erro ao traduzir '{key}': {e}")
+            return key

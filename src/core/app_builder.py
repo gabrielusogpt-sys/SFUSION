@@ -1,161 +1,151 @@
-# SFusion (SYNAPSE Fusion) Mapper
-#
-# Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import logging
+from PySide6.QtWidgets import QMainWindow
 
-# File: src/core/app_builder.py
-# Author: Gabriel Moraes
-# Date: November 2025
-# Description:
-#    Application Builder (SRP Refactor).
-#    Handles the "Bootstrapping" responsibility: initializing and
-#    connecting all services, models, and controllers.
-
-import os
-from PySide6.QtCore import QObject
-
-# Import View
-from ui.main_window import MainWindow
-
-# Import Controllers
-from src.main_controller import MainController
-from src.controllers.map_controller import MapController
-from src.controllers.sources_controller import SourcesController
-
-# --- FIX (Req 3): Import the new InfoController ---
-from src.controllers.info_controller import InfoController
-# --- END FIX ---
-
-# Import Model (State and Services)
+# Camada de Modelo e Serviços
 from src.domain.app_state import AppState
-from src.utils.i18n import I18nManager
-from src.utils.config import ConfigManager
 from src.services.map_importer import MapImporter
 from src.services.data_importer import DataImporter
 from src.services.persistence import PersistenceService
-
-# --- SRP Refactor (Map): Import the new MapRenderer ---
+# Camada de Utilitários
+from src.utils.config import ConfigManager
+from src.utils.i18n import I18nManager
+# Camada de View (UI)
+from ui.main_window import MainWindow
+from ui.map.map_view import MapView
+from ui.sources.sources_panel import SourcesPanel
+# 1. Alterar a importação (de InfoPanel para EditorPanel)
+from ui.editor.editor_panel import EditorPanel
+# Camada de Core/Refatoração
 from src.core.map_renderer import MapRenderer
-# --- END REFACTOR ---
+# Camada de Controladores
+from src.main_controller import MainController
+from src.controllers.map_controller import MapController
+from src.controllers.sources_controller import SourcesController
+from src.controllers.info_controller import InfoController
 
 
-class AppBuilder(QObject):
+class AppBuilder:
     """
-    Builds the application components and wires them together.
-    This class handles the "Bootstrapping" responsibility,
-    keeping the MainController clean (SRP).
+    Responsabilidade única: Construir e injetar todas as dependências
+    da aplicação (Padrão Builder / Injeção de Dependência).
     """
 
-    def __init__(self, view: MainWindow, app_root: str, parent=None):
-        """
-        Args:
-            view (MainWindow): The passive main view.
-            app_root (str): The absolute path to the application root.
-        """
-        super().__init__(parent)
-        self.view = view
-        self.app_root = app_root
-        print("AppBuilder: Initialized.")
+    def __init__(self):
+        # Componentes serão armazenados aqui
+        self.config = None
+        self.i18n = None
+        self.app_state = None
+        self.map_importer = None
+        self.data_importer = None
+        self.persistence_service = None
+        self.main_window = None
+        self.map_view = None
+        self.sources_panel = None
+        # 2. Alterar o nome da variável de instância
+        self.editor_panel = None
+        self.map_renderer = None
+        self.main_controller = None
+        self.map_controller = None
+        self.sources_controller = None
+        self.info_controller = None
 
-    def build_application(self) -> MainController:
-        """
-        Creates, initializes, and connects all application components.
-        
-        Returns:
-            MainController: The fully configured main controller.
-        """
-        print("AppBuilder: Starting application build...")
+    def build(self) -> QMainWindow:
+        """Constrói todos os componentes e os conecta."""
+        # 1. Utilitários
+        self._build_utils()
 
-        # --- 1. Initialize Utilities (Config and i18n) ---
-        config_path = os.path.join(self.app_root, "config/settings.json")
-        config = ConfigManager(config_path)
-        config.load_config()
-        
-        default_lang = config.get("default_language", "en")
-        
-        locale_path = os.path.join(self.app_root, "locale")
-        locale_backend_path = os.path.join(self.app_root, "locale_backend")
-        
-        i18n_frontend = I18nManager(locale_path)
-        i18n_backend = I18nManager(locale_backend_path)
-        
-        try:
-            i18n_frontend.load_language(default_lang)
-            i18n_backend.load_language(default_lang)
-            print(f"AppBuilder: Language '{default_lang}' loaded.")
-        except Exception as e:
-            print(f"CRITICAL: Failed to load language files: {e}")
+        # 2. Camada de Modelo e Serviços (Domínio)
+        self._build_models()
+        self._build_services()
 
-        # --- 2. Initialize Model (State and Services) ---
-        app_state = AppState()
-        map_importer = MapImporter()
-        data_importer = DataImporter()
-        persistence_service = PersistenceService()
+        # 3. Camada de View (UI)
+        self._build_views()
+
+        # 4. Camada de Suporte (Core/Renderers)
+        self._build_renderers()
+
+        # 5. Camada de Controladores
+        self._build_controllers()
+
+        # 6. Conexões finais
+        self._setup_connections()
+
+        # 4. Injeta os painéis na MainWindow (a ordem importa para o Splitter)
+        self.main_window.set_editor_panel(self.editor_panel) # (Esquerda)
+        self.main_window.set_map_view(self.map_view)        # (Centro)
+        self.main_window.set_sources_panel(self.sources_panel) # (Direita)
+
+        return self.main_window
+
+    def _build_utils(self):
+        self.config = ConfigManager("config/settings.json")
+        self.config.load_config() 
+
+        locale_path = self.config.get("locale_path")
+        language = self.config.get("language")
+
+        if not locale_path or not language:
+            logging.critical("Erro Crítico de Configuração!")
+            config_path = self.config.config_path 
+            logging.critical(f"  Ficheiro: {config_path}")
+            logging.critical("  As chaves 'locale_path' e 'language' estão em falta ou são nulas.")
+            logging.critical("  Por favor, verifique o seu 'config/settings.json'.")
+            raise ValueError(
+                f"Configuração 'locale_path' ou 'language' não encontrada em {config_path}"
+            )
         
-        # --- 3. Initialize Sub-Controllers and Renderers (SRP Refactor) ---
+        self.i18n = I18nManager(locale_path, language) 
+
+    def _build_models(self):
+        self.app_state = AppState()
+
+    def _build_services(self):
+        self.map_importer = MapImporter(self.app_state)
+        self.data_importer = DataImporter(self.app_state)
+        self.persistence_service = PersistenceService(self.app_state)
+
+    def _build_views(self):
+        self.main_window = MainWindow(self.i18n)
+        self.map_view = MapView(self.main_window)
+        self.sources_panel = SourcesPanel(self.i18n, self.main_window)
         
-        # 3a. Create the "Painter" (Renderer)
-        map_renderer = MapRenderer(
-            view=self.view.map_view,
-            app_state=app_state
+        # 3. Constrói o novo EditorPanel (filho da MainWindow)
+        self.editor_panel = EditorPanel(self.i18n, self.main_window) 
+
+    def _build_renderers(self):
+        self.map_renderer = MapRenderer(self.map_view, self.app_state, self.config)
+
+    def _build_controllers(self):
+        # 5. Injeta o novo EditorPanel (View) no InfoController
+        self.info_controller = InfoController(
+            self.app_state, 
+            self.editor_panel, # <-- Alterado (era self.info_panel)
+            self.i18n
         )
 
-        # 3b. Create the "Brain" (Controller) and inject the "Painter"
-        map_controller = MapController(
-            view=self.view.map_view, 
-            app_state=app_state,
-            renderer=map_renderer # Inject the renderer
+        self.map_controller = MapController(
+            self.app_state, 
+            self.map_renderer,
+            self.info_controller
         )
-        
-        # 3c. Create the Sources Controller
-        sources_controller = SourcesController(
-            view=self.view.sources_panel, 
-            app_state=app_state
-        )
-        
-        # --- FIX (Req 3): Create the Info Controller ---
-        # 3d. Create the Info Controller
-        info_controller = InfoController(
-            view=self.view.info_panel, # Get the panel from the main window
-            app_state=app_state
-        )
-        # --- END FIX ---
 
-
-        # --- 4. Wire Components Together ---
-        sources_controller.set_map_controller(map_controller)
-        map_controller.set_sources_controller(sources_controller)
-        
-        # --- FIX (Req 3): Inject InfoController into MapController ---
-        map_controller.set_info_controller(info_controller)
-        # --- END FIX ---
-
-        # --- 5. Initialize Main Controller (Inject Dependencies) ---
-        # The MainController is now "clean" and just receives components.
-        main_controller = MainController(
-            view=self.view,
-            app_state=app_state,
-            config=config,
-            i18n_frontend=i18n_frontend,
-            i18n_backend=i18n_backend,
-            map_controller=map_controller,
-            sources_controller=sources_controller,
-            map_importer=map_importer,
-            data_importer=data_importer,
-            persistence_service=persistence_service
+        self.main_controller = MainController(
+            self.main_window,
+            self.map_importer,
+            self.data_importer,
+            self.persistence_service,
+            self.i18n
         )
-        
-        print("AppBuilder: Build complete. Returning configured MainController.")
-        return main_controller
+
+        self.sources_controller = SourcesController(
+            self.app_state, 
+            self.sources_panel, 
+            self.i18n
+        )
+
+    def _setup_connections(self):
+        """Conecta todos os sinais e slots."""
+        self.main_controller.setup_connections()
+        self.map_controller.setup_connections(self.map_view)
+        self.sources_controller.setup_connections()
+        self.info_controller.setup_connections()

@@ -19,106 +19,109 @@
 # Author: Gabriel Moraes
 # Date: November 2025
 # Description:
-#    Data Importer (Service). Analyzes data source folders (Model logic).
-#    It is completely independent of Qt/UI.
+#    DataImporter (Service). Manages analyzing and adding data sources.
 
 import os
-import glob
+import logging
 import pandas as pd
-from typing import Dict, Any, List
+from PySide6.QtCore import QObject, Slot, QRunnable, QThreadPool, Signal
 
-class DataImporter:
+# 1. Importar o AppState e DataSource
+from src.domain.app_state import AppState
+from src.domain.entities import DataSource
+
+
+class DataImportWorker(QRunnable):
     """
-    Service class responsible for analyzing data source folders.
-    
-    It finds a sample file (CSV, JSON, Excel) and validates it
-    by reading the first few rows to extract column headers.
+    Trabalhador (Worker) para analisar uma pasta de fonte de dados.
     """
     
-    SUPPORTED_TYPES = {
-        "*.csv": "csv",
-        "*.json": "json",
-        "*.xlsx": "excel",
-        "*.xls": "excel"
-    }
-    
-    SAMPLE_ROWS = 5 # Number of rows to read for analysis
+    # 2. Aceitar o app_state
+    def __init__(self, folder_path: str, app_state: AppState):
+        super().__init__()
+        self.folder_path = folder_path
+        # 3. Armazenar a referência
+        self._app_state = app_state
+        self.signals = QObject() # Para emitir sinais se necessário
 
-    def __init__(self):
-        pass
-
-    def analyze_folder(self, folder_path: str) -> Dict[str, Any]:
+    @Slot()
+    def run(self):
         """
-        Analyzes a folder to find a valid sample data file.
-        
-        Args:
-            folder_path (str): The absolute path to the data source folder.
-            
-        Returns:
-            Dict[str, Any]: A dictionary containing 'file_type', 'sample_file',
-                            'columns', and 'sample_data'.
-                            
-        Raises:
-            Exception: If no valid files are found or pandas fails to read.
+        Analisa a pasta, identifica tipos de ficheiros e atualiza o AppState.
         """
-        print(f"DataImporter: Analyzing {folder_path}...")
-        
-        sample_file_path = None
-        file_type = None
-
-        # 1. Find the first supported file
-        for pattern, type_id in self.SUPPORTED_TYPES.items():
-            search_path = os.path.join(folder_path, pattern)
-            files = glob.glob(search_path)
-            if files:
-                sample_file_path = files[0] # Grab the first match
-                file_type = type_id
-                break
-        
-        if not sample_file_path:
-            raise Exception(f"No supported data files (.csv, .json, .xlsx, .xls) found in folder.")
-
-        print(f"DataImporter: Found sample file {sample_file_path} (type: {file_type}).")
-
-        # 2. Read the sample file using Pandas
+        logging.info(f"DataImportWorker: Analisando '{self.folder_path}'...")
         try:
-            df = self._read_sample(sample_file_path, file_type)
+            file_types = self._analyze_folder(self.folder_path)
             
-            columns = list(df.columns)
-            sample_data = df.to_dict(orient='records')
-            
-            print(f"DataImporter: Analysis complete. Columns: {columns}")
-            
-            return {
-                "file_type": file_type,
-                "sample_file": os.path.basename(sample_file_path),
-                "columns": columns,
-                "sample_data": sample_data
-            }
-            
-        except Exception as e:
-            print(f"CRITICAL: Pandas failed to read {sample_file_path}. {e}")
-            raise Exception(f"File is invalid or corrupt: {e}")
+            if not file_types:
+                logging.warning(f"DataImportWorker: Nenhuma fonte de dados válida encontrada em {self.folder_path}")
+                return
 
-    def _read_sample(self, file_path: str, file_type: str) -> pd.DataFrame:
+            # Cria a entidade DataSource
+            new_source = DataSource(
+                path=self.folder_path,
+                name=os.path.basename(self.folder_path),
+                file_types=file_types,
+                association_type="local", # Padrão
+                associated_element_id=None
+            )
+            
+            # 4. Atualiza o AppState (isto emitirá o sinal data_sources_changed)
+            self._app_state.add_data_source(new_source)
+            
+            logging.info(f"DataImportWorker: Análise concluída para {self.folder_path}. Tipos: {file_types}")
+
+        except Exception as e:
+            logging.error(f"DataImportWorker: Falha ao analisar {self.folder_path}: {e}", exc_info=True)
+
+    def _analyze_folder(self, folder_path):
+        """Varre a pasta e retorna os tipos de ficheiros suportados."""
+        types = set()
+        try:
+            for file_name in os.listdir(folder_path):
+                # (Lógica simples de deteção)
+                if file_name.endswith((".csv", ".csv.gz")):
+                    types.add("CSV")
+                elif file_name.endswith((".json", ".json.gz")):
+                    types.add("JSON")
+                elif file_name.endswith((".xls", ".xlsx")):
+                    types.add("Excel")
+        except FileNotFoundError:
+            logging.error(f"DataImportWorker: Pasta não encontrada: {folder_path}")
+            return []
+        except NotADirectoryError:
+            logging.error(f"DataImportWorker: O caminho não é uma pasta: {folder_path}")
+            return []
+            
+        return list(types)
+
+
+class DataImporter(QObject):
+    """
+    Serviço para importar fontes de dados. Gere a pool de threads.
+    (Refatorado do MainController)
+    """
+    
+    # --- 5. Alteração Principal: Corrigir o __init__ ---
+    def __init__(self, app_state: AppState):
+        super().__init__()
+        # 6. Armazenar a referência
+        self._app_state = app_state 
+        self._thread_pool = QThreadPool.globalInstance()
+        logging.info("DataImporter (Serviço) inicializado.")
+
+    @Slot(str)
+    def add_data_source(self, folder_path: str):
         """
-        Internal helper to read the first N rows of a file using pandas.
+        Inicia um DataImportWorker numa thread separada.
         """
-        if file_type == "csv":
-            return pd.read_csv(file_path, nrows=self.SAMPLE_ROWS)
-        elif file_type == "excel":
-            return pd.read_excel(file_path, nrows=self.SAMPLE_ROWS)
-        elif file_type == "json":
-            # read_json doesn't support 'nrows' directly for all orientations.
-            # We must read the whole file if it's a record array.
-            # For simplicity in this tool, we assume 'orient=records'
-            # and just read the first N lines if it's line-delimited.
-            try:
-                # Try line-delimited JSON
-                return pd.read_json(file_path, lines=True, nrows=self.SAMPLE_ROWS)
-            except ValueError:
-                # Try regular JSON array
-                df = pd.read_json(file_path)
-                return df.head(self.SAMPLE_ROWS)
-        else:
-            raise Exception(f"Unsupported file type '{file_type}' for reading.")
+        if not folder_path or not os.path.isdir(folder_path):
+            logging.warning(f"DataImporter: Caminho de pasta inválido fornecido: '{folder_path}'")
+            return
+
+        # 7. Passar o app_state para o Worker
+        worker = DataImportWorker(folder_path, self._app_state) 
+        
+        # (Opcional: conectar sinais de conclusão)
+
+        self._thread_pool.start(worker)
