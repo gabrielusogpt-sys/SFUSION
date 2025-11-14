@@ -28,6 +28,9 @@
   "sources_panel.radio_global_tip": "Associar esta fonte ao mapa inteiro",
   "sources_panel.radio_local": "Local (Padrão)",
   "sources_panel.radio_local_tip": "Associar esta fonte a um nó ou rua específica",
+  
+  "sources_panel.menu.modify_type": "Modificar Tipo (Global/Local)",
+  "sources_panel.menu.delete": "Deletar Fonte",
 
   "info_panel.title": "Editar Elemento",
   "info_panel.title_node": "Editar Nó",
@@ -37,5 +40,14 @@
   "info_panel.real_name_placeholder": "Ex: Av. Brasil",
   "info_panel.button_close": "Fechar",
   "info_panel.button_save": "Salvar",
-  "info_panel.save_success": "Nome '{name}' salvo."
+  "info_panel.save_success": "Nome '{name}' salvo.",
+  
+  "info_panel.data_source": "Fonte Local:",
+  "info_panel.data_source_tip": "Associar uma fonte de dados local a este elemento",
+  "info_panel.source_none": "(Nenhuma)",
+
+  "dialog.add_source.type_title": "Tipo de Associação",
+  "dialog.add_source.type_text": "Como deseja associar a fonte '{name}'?",
+  "dialog.add_source.type_global": "Global",
+  "dialog.add_source.type_local": "Local"
 }

@@ -2,18 +2,18 @@
 #
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Este programa é software livre: pode redistribuí-lo e/ou modificá-lo
+# sob os termos da Licença Pública Geral Affero GNU como publicada pela
+# Free Software Foundation, quer a versão 3 da Licença, ou
+# (à sua opção) qualquer versão posterior.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# Este programa é distribuído na esperança de que seja útil,
+# mas SEM QUALQUER GARANTIA; sem mesmo a garantia implícita de
+# COMERCIALIZAÇÃO ou ADEQUAÇÃO A UM PROPÓSITO ESPECÍFICO. Veja a
+# Licença Pública Geral Affero GNU para mais detalhes.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Deveria ter recebido uma cópia da Licença Pública Geral Affero GNU
+# junto com este programa. Se não, veja <https://www.gnu.org/licenses/>.
 
 # File: ui/map/map_view.py
 # Author: Gabriel Moraes
@@ -23,8 +23,6 @@
 #    para renderizar e interagir com o mapa.
 
 import logging
-# --- 1. CORREÇÃO AQUI ---
-# Adicionamos QPoint à lista de importações do QtCore
 from PySide6.QtCore import Qt, Signal, Slot, QRectF, QPoint
 from PySide6.QtGui import QPainter, QTransform
 from PySide6.QtWidgets import (
@@ -49,19 +47,20 @@ class MapView(QGraphicsView):
     # Sinais para o MapController
     nodeClicked = Signal(str)
     edgeClicked = Signal(str)
-    emptySpaceClicked = Signal(str)
+    
+    # --- CORREÇÃO PRINCIPAL AQUI ---
+    # O sinal de clique no espaço vazio não precisa de argumentos.
+    emptySpaceClicked = Signal()
+    # --- FIM DA CORREÇÃO ---
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        # 1. Configurar a Cena
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         
-        # 2. Configurar a View
         self._setup_view_settings()
 
-        # Controlo de Pan (arrastar)
         self._is_panning = False
         self._last_pan_point = None
 
@@ -69,11 +68,9 @@ class MapView(QGraphicsView):
 
     def _setup_view_settings(self):
         """Define as configurações de renderização e interação."""
-        # --- Refinamento Visual ---
         self.setRenderHint(QPainter.Antialiasing) 
         self.scene.setBackgroundBrush(Qt.white) 
 
-        # --- Comportamento de Zoom/Pan ---
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setDragMode(QGraphicsView.NoDrag)
         self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
@@ -101,9 +98,7 @@ class MapView(QGraphicsView):
     @Slot(float, float)
     def set_zoom_limits(self, min_factor: float, max_factor: float):
         """Define os limites mínimo e máximo de zoom."""
-        # (Este método existe para satisfazer a chamada do MapRenderer)
         logging.info(f"MapView: Limites de zoom definidos (Min: {min_factor}, Max: {max_factor})")
-        # A lógica real de limitação de zoom é feita no 'wheelEvent'
 
     # --- Eventos de Interação (Pan/Zoom/Clique) ---
 
@@ -123,7 +118,6 @@ class MapView(QGraphicsView):
             return
 
         if event.button() == Qt.LeftButton:
-            # Passa o evento (QPoint) para o slot de clique
             self._on_scene_clicked(event.pos())
             event.accept()
             return
@@ -159,7 +153,6 @@ class MapView(QGraphicsView):
 
     # --- Lógica de Clique ---
 
-    # 2. Esta anotação de tipo (QPoint) agora é válida
     @Slot(QPoint)
     def _on_scene_clicked(self, pos: QPoint):
         """
@@ -179,4 +172,5 @@ class MapView(QGraphicsView):
                 self.edgeClicked.emit(item_id)
             
         else:
+            # Esta chamada agora corresponde à definição do sinal (sem args)
             self.emptySpaceClicked.emit()

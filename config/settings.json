@@ -13,6 +13,9 @@
     "background": "#FFFFFF",
     "edge": "#4A4A4A",
     "node": "#E74C3C",
-    "internal_node": "#BDC3C7"
+    "internal_node": "#BDC3C7",
+    
+    "selection_associated": "#E74C3C", 
+    "selection_free": "#2ECC71"
   }
 }

@@ -2,18 +2,18 @@
 #
 # Copyright (C) 2025 Gabriel Moraes - Noxfort Labs
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as
-# published by the Free Software Foundation, either version 3 of the
-# License, or (at your option) any later version.
+# Este programa é software livre: pode redistribuí-lo e/ou modificá-lo
+# sob os termos da Licença Pública Geral Affero GNU como publicada pela
+# Free Software Foundation, quer a versão 3 da Licença, ou
+# (à sua opção) qualquer versão posterior.
 #
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
+# Este programa é distribuído na esperança de que seja útil,
+# mas SEM QUALQUER GARANTIA; sem mesmo a garantia implícita de
+# COMERCIALIZAÇÃO ou ADEQUAÇÃO A UM PROPÓSITO ESPECÍFICO. Veja a
+# Licença Pública Geral Affero GNU para mais detalhes.
 #
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Deveria ter recebido uma cópia da Licença Pública Geral Affero GNU
+# junto com este programa. If not, see <https://www.gnu.org/licenses/>.
 
 # File: src/main_controller.py
 # Author: Gabriel Moraes
@@ -25,9 +25,8 @@
 import logging
 import os
 from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-# 1. Importar os tipos corretos
 from ui.main_window import MainWindow
 from src.services.map_importer import MapImporter
 from src.services.data_importer import DataImporter
@@ -42,7 +41,6 @@ class MainController(QObject):
     (Refatorado para SRP)
     """
 
-    # --- 2. Alteração Principal: Corrigir o __init__ ---
     def __init__(
         self,
         main_window: MainWindow,
@@ -60,18 +58,15 @@ class MainController(QObject):
         :param persistence_service: O Serviço para salvar
         :param i18n: O gestor de internacionalização
         """
-        # 3. Chamar super() sem argumentos
         super().__init__()
         
-        # 4. Armazenar as referências (Injeção de Dependência)
         self._view = main_window
         self._map_importer = map_importer
         self._data_importer = data_importer
         self._persistence = persistence_service
         self._i18n = i18n
 
-        # Define o diretório inicial para diálogos
-        self._current_path = os.path.expanduser("~") # Pasta home do utilizador
+        self._current_path = os.path.expanduser("~")
         
         logging.info("MainController (Controlador) inicializado.")
 
@@ -95,46 +90,69 @@ class MainController(QObject):
         )
         
         if file_path:
-            self._current_path = os.path.dirname(file_path) # Atualiza o caminho
+            self._current_path = os.path.dirname(file_path)
             try:
-                # 5. Delega o trabalho ao Serviço
                 self._map_importer.load_map(file_path)
-                
-                # 6. Atualiza a View (feedback)
                 msg = t("main_window.status_map_loaded", 
                         name=os.path.basename(file_path))
                 self._view.show_status_message(msg)
                 
             except Exception as e:
-                # (Idealmente, o Worker emitiria um sinal de falha)
                 msg = t("dialog.error.generic_load", error=str(e))
                 self._view.show_error_message(t("dialog.error.title"), msg)
 
     @Slot()
     def _on_add_source(self):
-        """Chamado pelo sinal 'add_source_requested' da View."""
+        """
+        Chamado pelo sinal 'add_source_requested' da View.
+        (Modificado para perguntar Global/Local)
+        """
         t = self._i18n.t
+        
         folder_path = QFileDialog.getExistingDirectory(
             self._view,
             t("dialog.add_source.title"),
             self._current_path
         )
         
-        if folder_path:
-            self._current_path = folder_path # Atualiza o caminho
-            try:
-                # 5. Delega o trabalho ao Serviço
-                self._data_importer.add_data_source(folder_path)
-                
-                # 6. Atualiza a View (feedback)
-                # (O AppState emitirá um sinal que o SourcesController ouvirá)
-                msg = t("main_window.status_source_added", 
-                        name=os.path.basename(folder_path))
-                self._view.show_status_message(msg)
-                
-            except Exception as e:
-                msg = t("dialog.error.generic_load", error=str(e))
-                self._view.show_error_message(t("dialog.error.title"), msg)
+        if not folder_path:
+            return
+            
+        self._current_path = folder_path
+        
+        msg_box = QMessageBox(self._view)
+        msg_box.setWindowTitle(t("dialog.add_source.type_title"))
+        msg_box.setText(t("dialog.add_source.type_text", name=os.path.basename(folder_path)))
+        
+        global_button = msg_box.addButton(t("dialog.add_source.type_global"), QMessageBox.YesRole)
+        local_button = msg_box.addButton(t("dialog.add_source.type_local"), QMessageBox.NoRole)
+        msg_box.addButton(QMessageBox.Cancel)
+        
+        msg_box.exec()
+        
+        clicked_button = msg_box.clickedButton()
+        
+        # --- CORREÇÃO PRINCIPAL AQUI ---
+        # Envia a string em MAIÚSCULAS, que é o que o Enum 'AssociationType'
+        # espera.
+        if clicked_button == global_button:
+            assoc_type = "GLOBAL"
+        elif clicked_button == local_button:
+            assoc_type = "LOCAL"
+        else:
+            return # Utilizador cancelou
+        # --- FIM DA CORREÇÃO ---
+
+        try:
+            self._data_importer.add_data_source(folder_path, assoc_type)
+            
+            msg = t("main_window.status_source_added", 
+                    name=os.path.basename(folder_path))
+            self._view.show_status_message(msg)
+            
+        except Exception as e:
+            msg = t("dialog.error.generic_load", error=str(e))
+            self._view.show_error_message(t("dialog.error.title"), msg)
 
     @Slot()
     def _on_save_config(self):
@@ -148,12 +166,9 @@ class MainController(QObject):
         )
         
         if file_path:
-            self._current_path = os.path.dirname(file_path) # Atualiza o caminho
+            self._current_path = os.path.dirname(file_path)
             try:
-                # 5. Delega o trabalho ao Serviço
                 self._persistence.save_configuration(file_path)
-                
-                # 6. Atualiza a View (feedback)
                 msg = t("main_window.status_config_saved", 
                         name=os.path.basename(file_path))
                 self._view.show_status_message(msg)

@@ -26,7 +26,6 @@ class MapImportWorker(QRunnable):
             if not nodes and not edges:
                 logging.warning(f"MapImportWorker: Ficheiro '{self.file_path}' não continha nós ou arestas.")
             
-            # Atualiza o AppState (isto emitirá o sinal map_data_loaded)
             self._app_state.set_map_data(nodes, edges)
             
             logging.info(f"MapImportWorker: Importação concluída. {len(nodes)} nós, {len(edges)} arestas.")
@@ -34,7 +33,6 @@ class MapImportWorker(QRunnable):
         except etree.XMLSyntaxError as e:
             logging.error(f"MapImportWorker: Erro de sintaxe XML ao ler '{self.file_path}': {e}")
         except Exception as e:
-            # Erro é apanhado aqui e logado
             logging.error(f"MapImportWorker: Erro inesperado ao importar mapa: {e}", exc_info=True)
 
     def _parse_net_xml(self, file_path):
@@ -44,9 +42,6 @@ class MapImportWorker(QRunnable):
         
         with open_func(file_path, 'rb') as f:
             parser = etree.XMLParser(target=NetXMLParserTarget())
-            # O etree.parse() irá chamar os métodos do target
-            # Se um erro (como o TypeError) ocorrer dentro do target,
-            # ele será lançado aqui.
             etree.parse(f, parser)
             
             return parser.target.nodes, parser.target.edges
@@ -65,6 +60,7 @@ class NetXMLParserTarget(object):
     def start(self, tag, attrib):
         """Chamado quando uma tag <tag> é aberta."""
         try:
+            # (Corrigido para corresponder à entidade MapNode)
             if tag == "junction" and attrib.get("type") != "internal":
                 node = MapNode(
                     id=attrib["id"],
@@ -75,18 +71,14 @@ class NetXMLParserTarget(object):
                 )
                 self.nodes.append(node)
 
+            # (Corrigido para corresponder à entidade MapEdge)
             elif tag == "edge" and not attrib.get("function") == "internal":
-                # --- 1. CORREÇÃO PRINCIPAL (Início) ---
-                # Agora também lemos 'from' e 'to' do XML.
-                # Usamos attrib[] para garantir que eles existem,
-                # o que levanta um KeyError se faltarem (que é apanhado abaixo)
                 self._current_edge = {
                     "id": attrib["id"],
-                    "from_node": attrib["from"], # <-- Adicionado
-                    "to_node": attrib["to"],     # <-- Adicionado
+                    "from_node": attrib["from"],
+                    "to_node": attrib["to"],
                     "shape": []
                 }
-                # --- FIM DA CORREÇÃO ---
             
             elif tag == "lane" and self._current_edge is not None:
                 shape_str = attrib.get("shape")
@@ -95,7 +87,9 @@ class NetXMLParserTarget(object):
                         (float(p.split(',')[0]), float(p.split(',')[1]))
                         for p in shape_str.split(' ')
                     ]
-                    self._current_edge["shape"] = points
+                    # Apenas a primeira "lane" define a geometria
+                    if not self._current_edge["shape"]:
+                        self._current_edge["shape"] = points
 
         except KeyError as e:
             logging.warning(f"NetXMLParserTarget: Atributo em falta no XML: {e} (Tag: {tag}, Attrs: {attrib})")
@@ -106,14 +100,12 @@ class NetXMLParserTarget(object):
     def end(self, tag):
         """Chamado quando uma tag </tag> é fechada."""
         if tag == "edge" and self._current_edge is not None:
+            # (Corrigido para corresponder à entidade MapEdge)
             if self._current_edge["shape"]:
-                # --- 2. CORREÇÃO PRINCIPAL (Fim) ---
-                # Agora passamos os argumentos em falta (from_node, to_node)
-                # para o construtor do MapEdge.
                 edge = MapEdge(
                     id=self._current_edge["id"],
-                    from_node=self._current_edge["from_node"], # <-- Adicionado
-                    to_node=self._current_edge["to_node"],     # <-- Adicionado
+                    from_node=self._current_edge["from_node"],
+                    to_node=self._current_edge["to_node"],
                     shape=self._current_edge["shape"],
                     real_name=None
                 )
@@ -131,6 +123,7 @@ class NetXMLParserTarget(object):
 class MapImporter(QObject):
     """
     Serviço de importação de mapa. Gere a pool de threads.
+    (Esta é a classe que estava em falta)
     """
     
     def __init__(self, app_state: AppState):

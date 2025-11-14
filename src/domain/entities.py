@@ -26,18 +26,15 @@
 from dataclasses import dataclass, field
 from enum import Enum
 import uuid
-from typing import List, Tuple
+from typing import List, Tuple, Any # Adicionar Any para file_types
 
 
-# --- FIX: Moved AssociationType definition UP ---
-# It must be defined *before* the DataSource class, which uses it
-# for type hinting and default values.
+# (Definição de Enum - movida para cima no seu ficheiro, o que está correto)
 class AssociationType(str, Enum):
     """ Defines how a DataSource is associated with the map. """
     UNASSOCIATED = "UNASSOCIATED"
-    GLOBAL = "GLOBAL" # Associated with the whole map
-    LOCAL = "LOCAL"   # Associated with a specific node
-# --- END FIX ---
+    GLOBAL = "GLOBAL"
+    LOCAL = "LOCAL"
 
 
 @dataclass
@@ -46,16 +43,26 @@ class DataSource:
     Entity (Model) representing a single data source.
     """
     path: str
+    
+    # --- 1. CORREÇÃO PRINCIPAL ---
+    # Adicionamos o campo 'name' que o DataImporter está a tentar passar.
+    name: str
+    
+    # Lista de tipos de ficheiros detetados (ex: ["JSON", "CSV"])
+    file_types: list[str] = field(default_factory=list)
+    
+    # (Campos do seu ficheiro original, mantidos)
     id: str = field(default_factory=lambda: f"src_{uuid.uuid4().hex[:8]}")
     parser_id: str | None = None
     
-    # This type hint and default value requires AssociationType
-    # to be defined *before* this class.
     association_type: AssociationType = AssociationType.UNASSOCIATED
-    associated_node_id: str | None = None
     
-    # TODO: Add fields for column mapping, etc.
-    # mapped_columns: Dict[str, str] = field(default_factory=dict)
+    # Alterado de 'associated_node_id' para um nome genérico
+    associated_element_id: str | None = None
+    
+    # (Campos da nossa arquitetura - fundidos com os seus)
+    # A 'file_types' já está acima.
+    # A 'association_type' já está acima.
 
 
 @dataclass
@@ -65,16 +72,13 @@ class MapNode:
     """
     id: str
     x: float
-    y: float # Y-coordinate is inverted (Qt style)
+    y: float
     
-    # --- FIX: Add fields for new features ---
-    # Field to store the junction type (e.g., "internal", "priority")
-    # This will be used to solve the "Vários Nós" problem (Req 2).
+    # (Campo do seu ficheiro original, mantido)
     node_type: str = "unknown"
     
-    # Field to store the user-defined "real name" (Req 3).
+    # (Campo do seu ficheiro original, mantido)
     real_name: str | None = None
-    # --- END FIX ---
 
 
 @dataclass
@@ -83,11 +87,11 @@ class MapEdge:
     Entity (Model) representing a single map edge (road).
     """
     id: str
+    
+    # (Campos do seu ficheiro original, mantidos)
     from_node: str
     to_node: str
     shape: List[Tuple[float, float]] = field(default_factory=list)
     
-    # --- FIX: Add field for new features ---
-    # Field to store the user-defined "real name" (Req 3).
+    # (Campo do seu ficheiro original, mantido)
     real_name: str | None = None
-    # --- END FIX ---
